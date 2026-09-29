@@ -31,6 +31,10 @@ export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
 const send = (ws: WebSocket, m: ServerMessage) => {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m))
 }
+const logFault = (e: unknown) => {
+  const err = e instanceof Error ? e : new Error('non-error thrown')
+  console.error(`gateway: handler fault (${err.name}: ${err.message})`)
+}
 const errorMsg = (code: ErrorCode, message: string = code): ServerMessage => ({ type: 'error', code, message })
 
 export function attachGateway(server: Server, d: GatewayDeps): { close(): void } {
@@ -39,7 +43,12 @@ export function attachGateway(server: Server, d: GatewayDeps): { close(): void }
   let total = 0
 
   server.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
+    let url: URL
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost')
+    } catch {
+      return void socket.destroy()
+    }
     if (url.pathname !== '/ws') return void socket.destroy()
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req, url.searchParams.get('room') ?? ''))
   })
@@ -74,7 +83,14 @@ export function attachGateway(server: Server, d: GatewayDeps): { close(): void }
       if (!parsed.success) return send(ws, errorMsg('bad_request', 'invalid message'))
       const msg = parsed.data
 
-      if (room) return room.handle(conn.id, msg)
+      if (room) {
+        try {
+          return room.handle(conn.id, msg)
+        } catch (e) {
+          logFault(e)
+          return void ws.close(1011, 'server error')
+        }
+      }
       if (msg.type !== 'hello') return send(ws, errorMsg('unauthorized', 'send hello first'))
       if (joining) return
       joining = true
@@ -96,6 +112,9 @@ export function attachGateway(server: Server, d: GatewayDeps): { close(): void }
         }
         if (ws.readyState !== ws.OPEN) return void got.room.leave(conn.id) // client left during the join
         room = got.room
+      } catch (e) {
+        logFault(e)
+        ws.close(1011, 'server error')
       } finally {
         joining = false
       }

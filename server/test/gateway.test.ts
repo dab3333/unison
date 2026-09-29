@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import WebSocket from 'ws'
 import { SignJWT } from 'jose'
-import type { AddressInfo } from 'node:net'
+import net, { type AddressInfo } from 'node:net'
 import type { FastifyInstance } from 'fastify'
-import { createAuth } from '../src/auth'
+import { createAuth, type Auth } from '../src/auth'
 import { createMemoryStores } from '../src/memoryStores'
 import { buildServer } from '../src/server'
 import type { Stores } from '../src/stores'
@@ -149,5 +149,63 @@ describe('gateway', () => {
     expect((await again.waitFor(ofType('error'))).code).toBe('banned')
     expect(await again.closed).toBe(4004)
     h.ws.close()
+  })
+
+  it('closes with 1011 when auth.verify throws, and keeps serving others', async () => {
+    const throwing: Auth = { ...auth, verify: (t: string) => (t === 'boom' ? Promise.reject(new Error('x')) : auth.verify(t)) }
+    const rec = await start({ auth: throwing })
+    const a = connect(port, rec.slug); await a.opened
+    a.send({ type: 'hello', token: 'boom' })
+    expect(await a.closed).toBe(1011)
+    const b = connect(port, rec.slug); await b.opened
+    b.send({ type: 'hello', token: await guestToken('g1') })
+    expect((await b.waitFor(ofType('welcome'))).role).toBe('guest')
+    b.ws.close()
+  })
+
+  it('closes with 1011 when the store throws in manager.get, and keeps serving others', async () => {
+    const base = createMemoryStores()
+    const flaky: Stores = {
+      ...base,
+      rooms: { ...base.rooms, getBySlug: (slug: string) => (slug === 'flaky' ? Promise.reject(new Error('db down')) : base.rooms.getBySlug(slug)) },
+    }
+    const rec = await start({ stores: flaky })
+    await flaky.rooms.create(rec)
+    const a = connect(port, 'flaky'); await a.opened
+    a.send({ type: 'hello', token: await guestToken('g1') })
+    expect(await a.closed).toBe(1011)
+    const b = connect(port, rec.slug); await b.opened
+    b.send({ type: 'hello', token: await guestToken('g2') })
+    expect((await b.waitFor(ofType('welcome'))).role).toBe('guest')
+    b.ws.close()
+  })
+
+  it('survives malformed upgrade request targets', async () => {
+    const rec = await start()
+    for (const target of ['//', '///', '//[', 'http://[']) {
+      await new Promise<void>((res) => {
+        const c = net.connect(port, '127.0.0.1', () =>
+          c.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`))
+        c.on('close', () => res()); c.on('error', () => res())
+      })
+    }
+    const health = await fetch(`http://127.0.0.1:${port}/health`)
+    expect(health.status).toBe(200)
+    const a = connect(port, rec.slug); await a.opened
+    a.send({ type: 'hello', token: await guestToken('g1') })
+    expect((await a.waitFor(ofType('welcome'))).role).toBe('guest')
+    a.ws.close()
+  })
+
+  it('releases the per-IP slot when clients disconnect', async () => {
+    const rec = await start({ maxPerIp: 2 })
+    const a = connect(port, rec.slug); const b = connect(port, rec.slug)
+    await a.opened; await b.opened
+    a.ws.close(); b.ws.close()
+    await a.closed; await b.closed
+    const c = connect(port, rec.slug); await c.opened
+    c.send({ type: 'hello', token: await guestToken('g1') })
+    expect((await c.waitFor(ofType('welcome'))).role).toBe('guest')
+    c.ws.close()
   })
 })

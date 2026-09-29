@@ -25,3 +25,10 @@ console.log(`unison server listening on :${cfg.port}`)
 const shutdown = () => void app.close().then(() => process.exit(0))
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+
+const short = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : 'non-error thrown')
+process.on('unhandledRejection', (e) => console.error(`unhandled rejection (${short(e)})`))
+process.on('uncaughtException', (e) => {
+  console.error(`uncaught exception (${short(e)})`)
+  process.exit(1)
+})
