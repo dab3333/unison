@@ -37,6 +37,7 @@ export class SyncClient {
     switch (m.type) {
       case 'welcome':
         this.offset = m.serverTime - this.d.now()
+        this.state = null // a welcome is authoritative for a (re)connection: reset the version guard
         this.setState(m.state)
         break
       case 'pong':
@@ -100,10 +101,15 @@ export class SyncClient {
         p.setRate(act.kind === 'rate' ? act.rate : 1)
       }
     } else {
-      this.quiet()
-      if (p.isPlaying()) p.pause()
+      if (p.isPlaying()) {
+        this.quiet()
+        p.pause()
+      }
       p.setRate(1)
-      if (act.kind !== 'none') p.seek(expected)
+      if (act.kind !== 'none') {
+        this.quiet()
+        p.seek(expected)
+      }
     }
   }
 

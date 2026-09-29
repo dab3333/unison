@@ -183,3 +183,48 @@ describe('SyncClient file mismatch', () => {
     expect(t.mismatches).toEqual([{ expected: 100, actual: 140 }])
   })
 })
+
+describe('SyncClient welcome and paused echo window', () => {
+  it('accepts a welcome with a lower version (server restart) and drives the player', () => {
+    const t = make()
+    t.sync.handleServer(t.welcome(t.state({ version: 5 })))
+    t.player.playing = true; t.player.time = 10
+    t.sync.attachPlayer(t.player)
+    t.player.calls.length = 0
+    t.sync.handleServer(t.welcome(t.state({ version: 1, position: 40 })))
+    expect(t.sync.state?.version).toBe(1)
+    expect(t.player.calls).toEqual(['seek:40', 'rate:1'])
+  })
+
+  it('a welcome with the same source does not re-fire onSource or drop the player', () => {
+    const t = make()
+    t.sync.handleServer(t.welcome(t.state({ version: 5 })))
+    t.player.playing = true; t.player.time = 10
+    t.sync.attachPlayer(t.player)
+    t.sync.handleServer(t.welcome(t.state({ version: 1 })))
+    expect(t.sources).toEqual([file])
+    t.player.calls.length = 0
+    t.player.time = 14
+    t.sync.handleServer(t.heartbeat(t.state({ version: 1 })))
+    expect(t.player.calls).toEqual(['seek:10', 'rate:1'])
+  })
+
+  it('a welcome with a different source fires onSource once', () => {
+    const t = make()
+    t.sync.handleServer(t.welcome(t.state({ version: 5 })))
+    const yt: Source = { type: 'youtube', id: 'dQw4w9WgXcQ' }
+    t.sync.handleServer(t.welcome(t.state({ version: 1, source: yt })))
+    expect(t.sources).toEqual([file, yt])
+  })
+
+  it('does not swallow a real user play right after a heartbeat while paused and in sync', () => {
+    const t = make()
+    t.sync.handleServer(t.welcome(t.state({ isPlaying: false, position: 20 })))
+    t.player.time = 20
+    t.sync.attachPlayer(t.player)
+    t.clock.t += 5000
+    t.sync.handleServer(t.heartbeat(t.state({ isPlaying: false, position: 20 })))
+    t.player.emit('play')
+    expect(t.sent.at(-1)).toMatchObject({ type: 'control', action: 'play' })
+  })
+})
