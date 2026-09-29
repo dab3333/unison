@@ -84,38 +84,111 @@ export class YouTubeAdapter implements Player {
   }
 }
 
+export interface YTNamespace {
+  Player: new (el: HTMLElement, opts: YTPlayerOptions) => YTPlayerLike
+}
+export interface YTPlayerOptions {
+  videoId: string
+  playerVars: Record<string, number>
+  events: {
+    onReady: () => void
+    onStateChange: (e: { data: number }) => void
+    onAutoplayBlocked: () => void
+    onError: (e: { data: number }) => void
+  }
+}
+
 declare global {
   interface Window {
-    YT?: { Player: new (el: HTMLElement, opts: unknown) => YTPlayerLike }
+    YT?: YTNamespace
     onYouTubeIframeAPIReady?: () => void
   }
 }
 
-let apiPromise: Promise<NonNullable<Window['YT']>> | null = null
-function loadApi(): Promise<NonNullable<Window['YT']>> {
-  apiPromise ??= new Promise((resolve) => {
-    if (window.YT?.Player) return resolve(window.YT)
-    window.onYouTubeIframeAPIReady = () => resolve(window.YT!)
-    const s = document.createElement('script')
-    s.src = 'https://www.youtube.com/iframe_api'
-    document.head.appendChild(s)
-  })
-  return apiPromise
+interface ScriptLike { src: string; onerror: ((e?: unknown) => void) | null }
+export interface LoaderDeps {
+  doc?: { createElement(tag: 'script'): ScriptLike; head: { appendChild(s: ScriptLike): unknown } }
+  win?: { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void }
+  timeoutMs?: number
+  setTimer?: (fn: () => void, ms: number) => unknown
+  clearTimer?: (t: unknown) => void
 }
 
-export async function createYouTubeAdapter(container: HTMLElement, videoId: string, controls: boolean): Promise<YouTubeAdapter> {
-  const YT = await loadApi()
-  return new Promise((resolve) => {
-    let adapter!: YouTubeAdapter
+// Cached per window object; cleared on failure so a later call can retry.
+const apiCache = new WeakMap<object, Promise<YTNamespace>>()
+
+export function loadYouTubeApi(deps: LoaderDeps = {}): Promise<YTNamespace> {
+  const win = deps.win ?? window
+  const cached = apiCache.get(win)
+  if (cached) return cached
+  const doc = deps.doc ?? (document as unknown as NonNullable<LoaderDeps['doc']>)
+  const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
+  const clearTimer = deps.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>))
+  const timeoutMs = deps.timeoutMs ?? 10_000
+  const promise = new Promise<YTNamespace>((resolve, reject) => {
+    if (win.YT?.Player) return resolve(win.YT)
+    let timer: unknown
+    const fail = (err: Error) => {
+      clearTimer(timer)
+      if (apiCache.get(win) === promise) apiCache.delete(win)
+      reject(err)
+    }
+    const previous = win.onYouTubeIframeAPIReady
+    win.onYouTubeIframeAPIReady = () => {
+      clearTimer(timer)
+      resolve(win.YT!)
+      previous?.()
+    }
+    timer = setTimer(() => fail(new Error('YouTube API load timed out')), timeoutMs)
+    const s = doc.createElement('script')
+    s.onerror = () => fail(new Error('YouTube API failed to load'))
+    s.src = 'https://www.youtube.com/iframe_api'
+    doc.head.appendChild(s)
+  })
+  apiCache.set(win, promise)
+  return promise
+}
+
+export interface CreateOptions {
+  loadApi?: () => Promise<YTNamespace>
+  readyTimeoutMs?: number
+}
+
+export async function createYouTubeAdapter(
+  container: HTMLElement,
+  videoId: string,
+  controls: boolean,
+  opts: CreateOptions = {},
+): Promise<YouTubeAdapter> {
+  const YT = await (opts.loadApi ?? loadYouTubeApi)()
+  return new Promise((resolve, reject) => {
+    let adapter: YouTubeAdapter | undefined
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fail = (err: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      adapter?.destroy()
+      reject(err)
+    }
     const yt = new YT.Player(container, {
       videoId,
       playerVars: { controls: controls ? 1 : 0, disablekb: controls ? 0 : 1, playsinline: 1, rel: 0, modestbranding: 1 },
       events: {
-        onReady: () => { adapter.onReady(); resolve(adapter) },
-        onStateChange: (e: { data: number }) => adapter.onStateChange(e.data),
-        onAutoplayBlocked: () => adapter.onAutoplayBlocked(),
+        onReady: () => {
+          if (settled || !adapter) return
+          settled = true
+          clearTimeout(timer)
+          adapter.onReady()
+          resolve(adapter)
+        },
+        onStateChange: (e) => adapter?.onStateChange(e.data),
+        onAutoplayBlocked: () => adapter?.onAutoplayBlocked(),
+        onError: (e) => fail(new Error(`YouTube player error ${e.data}`)),
       },
     })
     adapter = new YouTubeAdapter(yt)
+    timer = setTimeout(() => fail(new Error('YouTube player timed out before becoming ready')), opts.readyTimeoutMs ?? 15_000)
   })
 }
