@@ -90,7 +90,7 @@ export class SyncClient {
     if (s.isPlaying) {
       if (!p.isPlaying()) {
         this.quiet()
-        p.seek(expected)
+        if (act.kind !== 'none') p.seek(expected) // a needless seek makes the video buffer, which would pause the room
         p.setRate(1)
         p.play()
       } else if (act.kind === 'seek') {

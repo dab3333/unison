@@ -228,3 +228,13 @@ describe('SyncClient welcome and paused echo window', () => {
     expect(t.sent.at(-1)).toMatchObject({ type: 'control', action: 'play' })
   })
 })
+
+describe('SyncClient resume without a needless seek', () => {
+  it('starts playback without seeking when already within tolerance of the room position', () => {
+    const t = make()
+    t.sync.handleServer(t.welcome(t.state({ position: 10 })))
+    t.player.time = 10.1
+    t.sync.attachPlayer(t.player)
+    expect(t.player.calls).toEqual(['rate:1', 'play'])
+  })
+})

@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest'
 import { runPlayerContract } from './playerContract'
 import { HtmlVideoAdapter, type VideoLike } from '../src/player/HtmlVideoAdapter'
 
@@ -44,4 +45,15 @@ runPlayerContract('HtmlVideoAdapter', () => {
       setDuration: (n) => { video.duration = n },
     },
   }
+})
+
+describe('HtmlVideoAdapter buffering', () => {
+  it('clears buffering on canplay, since playing never fires while paused', () => {
+    const video = new FakeVideo()
+    const player = new HtmlVideoAdapter(video)
+    const cb = vi.fn(); player.on('buffering', cb)
+    video.dispatchEvent(new Event('waiting'))
+    video.dispatchEvent(new Event('canplay'))
+    expect(cb.mock.calls).toEqual([[true], [false]])
+  })
 })

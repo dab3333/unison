@@ -25,7 +25,7 @@ export class HtmlVideoAdapter implements Player {
     on('seeked', () => this.emit('seek'))
     on('waiting', () => this.emit('buffering', true))
     on('playing', () => this.emit('buffering', false))
-    on('canplay', () => this.emit('ready'))
+    on('canplay', () => { this.emit('buffering', false); this.emit('ready') }) // 'playing' never fires while paused, so canplay must also clear buffering
     on('loadedmetadata', () => this.emit('ready'))
   }
 
