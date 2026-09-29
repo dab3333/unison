@@ -32,13 +32,18 @@ export interface RoomDeps {
   persist: { ban(key: string): void; saveSettings(s: RoomSettings): void }
 }
 
+interface Penalties {
+  muted: boolean
+  mutedUntil: number
+  strikes: number[]
+}
+
 interface Entry {
   conn: Conn
   identity: Identity
   buffering: boolean
-  muted: boolean
-  mutedUntil: number
-  strikes: number[]
+  /** Same object as in Room.penalties, so it survives replacement and rejoin. */
+  pen: Penalties
 }
 
 type ModMsg = Extract<ClientMessage, { type: 'mod' }>
@@ -61,6 +66,7 @@ export class Room {
   emptySince: number | null
   private entries = new Map<string, Entry>()
   private mods = new Set<string>()
+  private penalties = new Map<string, Penalties>()
   private bans: Set<string>
   private settings: RoomSettings
   private controlLimiter: RateLimiter
@@ -104,7 +110,7 @@ export class Room {
       id: e.identity.id,
       nickname: e.identity.nickname,
       role: this.roleOf(e.identity.id),
-      muted: e.muted || e.mutedUntil > t,
+      muted: e.pen.muted || e.pen.mutedUntil > t,
       buffering: e.buffering,
     }))
   }
@@ -117,7 +123,12 @@ export class Room {
     const existing = this.entries.get(identity.id)
     if (!existing && !isHost && this.entries.size >= this.settings.maxViewers) return { ok: false, code: 'room_full' }
     if (existing) existing.conn.close(4001, 'replaced by a newer connection')
-    this.entries.set(identity.id, { conn, identity, buffering: false, muted: false, mutedUntil: 0, strikes: [] })
+    let pen = this.penalties.get(identity.id)
+    if (!pen) {
+      pen = { muted: false, mutedUntil: 0, strikes: [] }
+      this.penalties.set(identity.id, pen)
+    }
+    this.entries.set(identity.id, { conn, identity, buffering: false, pen })
     this.emptySince = null
     conn.send({
       type: 'welcome',
@@ -176,6 +187,10 @@ export class Room {
       this.broadcastState()
       this.broadcastMembers()
     }
+    for (const [id, p] of this.penalties) {
+      if (this.entries.has(id) || p.muted || p.mutedUntil > t) continue
+      if (p.strikes.every((s) => t - s >= STRIKE_WINDOW_MS)) this.penalties.delete(id)
+    }
     if (t - this.lastHeartbeat >= HEARTBEAT_MS) {
       this.lastHeartbeat = t
       this.broadcast({ type: 'heartbeat', state: this.engine.state, serverTime: t })
@@ -209,8 +224,8 @@ export class Room {
   private onChat(entry: Entry, text: string): void {
     const id = entry.identity.id
     if (this.roleOf(id) !== 'host' && !this.settings.chatEnabled) return this.err(entry, 'forbidden')
-    if (entry.muted) return this.err(entry, 'forbidden')
-    if (entry.mutedUntil > this.deps.now()) return this.strike(entry)
+    if (entry.pen.muted) return this.err(entry, 'forbidden')
+    if (entry.pen.mutedUntil > this.deps.now()) return this.strike(entry)
     const res = this.chat.post(entry.identity, text)
     if (!res.ok) return res.code === 'rate_limited' ? this.strike(entry) : this.err(entry, res.code)
     this.broadcast({ type: 'chat', message: res.message })
@@ -236,11 +251,11 @@ export class Room {
         }
         return this.evict(target, 4004, 'banned')
       case 'mute':
-        target.muted = true
+        target.pen.muted = true
         break
       case 'unmute':
-        target.muted = false
-        target.mutedUntil = 0
+        target.pen.muted = false
+        target.pen.mutedUntil = 0
         break
       case 'promote':
         if (target.identity.isGuest) return this.err(actor, 'forbidden', 'guests cannot be moderators')
@@ -286,13 +301,14 @@ export class Room {
 
   private strike(entry: Entry): void {
     const t = this.deps.now()
-    entry.strikes = entry.strikes.filter((s) => t - s < STRIKE_WINDOW_MS)
-    entry.strikes.push(t)
+    const pen = entry.pen
+    pen.strikes = pen.strikes.filter((s) => t - s < STRIKE_WINDOW_MS)
+    pen.strikes.push(t)
     this.err(entry, 'rate_limited')
-    if (entry.strikes.length >= 10) {
+    if (pen.strikes.length >= 10) {
       this.evict(entry, 4008, 'rate limit exceeded')
-    } else if (entry.strikes.length === 5) {
-      entry.mutedUntil = t + AUTO_MUTE_MS
+    } else if (pen.strikes.length === 5) {
+      pen.mutedUntil = t + AUTO_MUTE_MS
       this.broadcastMembers()
     }
   }

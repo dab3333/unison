@@ -194,6 +194,65 @@ describe('chat', () => {
   })
 })
 
+describe('penalties survive reconnects', () => {
+  const chatN = (room: Room, id: string, n: number) => { for (let i = 0; i < n; i++) room.handle(id, { type: 'chat', text: `m${i}` }) }
+
+  it('keeps a moderator mute across leave and rejoin until unmuted', () => {
+    const { room, h, g } = loaded()
+    room.handle(h.conn.id, { type: 'mod', op: 'mute', target: 'g1' })
+    room.leave(g.conn.id)
+    const back = joinAs(room, guest('g1'), 'c-new')
+    room.handle(back.conn.id, { type: 'chat', text: 'hello' })
+    expect(back.conn.last('error')?.code).toBe('forbidden')
+    room.handle(h.conn.id, { type: 'mod', op: 'unmute', target: 'g1' })
+    room.handle(back.conn.id, { type: 'chat', text: 'hello' })
+    expect(h.conn.last('chat')?.message.text).toBe('hello')
+  })
+
+  it('keeps a mute when the user opens a second tab', () => {
+    const { room, h } = loaded()
+    room.handle(h.conn.id, { type: 'mod', op: 'mute', target: 'g1' })
+    const tab2 = joinAs(room, guest('g1'), 'c-tab2')
+    room.handle(tab2.conn.id, { type: 'chat', text: 'hello' })
+    expect(tab2.conn.last('error')?.code).toBe('forbidden')
+  })
+
+  it('keeps an auto-mute across rejoin and expires it after 60s', () => {
+    const { room, advance, h, g } = loaded()
+    chatN(room, g.conn.id, 8)
+    room.leave(g.conn.id)
+    const back = joinAs(room, guest('g1'), 'c-new')
+    expect(back.conn.last('members')!.members.find((m) => m.id === 'g1')?.muted).toBe(true)
+    room.handle(back.conn.id, { type: 'chat', text: 'hi' })
+    expect(back.conn.all('chat').filter((c) => c.message.text === 'hi')).toHaveLength(0)
+    advance(60_001)
+    room.handle(back.conn.id, { type: 'chat', text: 'later' })
+    expect(h.conn.last('chat')?.message.text).toBe('later')
+  })
+
+  it('accumulates strikes across a reconnect', () => {
+    const { room, g } = loaded()
+    chatN(room, g.conn.id, 7) // 3 allowed + 4 strikes
+    room.leave(g.conn.id)
+    const back = joinAs(room, guest('g1'), 'c-new')
+    chatN(room, back.conn.id, 8) // 3 allowed + 5 more strikes = 9 total
+    expect(back.conn.closed).toBeNull()
+    chatN(room, back.conn.id, 1) // 10th strike
+    expect(back.conn.closed?.code).toBe(4008)
+  })
+
+  it('forgets old penalties once they have expired and the user is gone', () => {
+    const { room, advance, g } = loaded()
+    chatN(room, g.conn.id, 7)
+    room.leave(g.conn.id)
+    advance(61_000)
+    room.tick()
+    const back = joinAs(room, guest('g1'), 'c-new')
+    chatN(room, back.conn.id, 12) // fresh: 3 allowed + 9 strikes, still connected
+    expect(back.conn.closed).toBeNull()
+  })
+})
+
 describe('moderation', () => {
   it('lets a promoted moderator kick a guest but not the host, and not ban', () => {
     const { room, h } = loaded()
