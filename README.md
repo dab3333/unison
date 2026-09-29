@@ -17,7 +17,7 @@ Free, mobile-first watch parties. Everyone plays their own copy of the video; Un
 
 ## Develop
 
-Requires Node 20 or newer.
+Requires Node 22 or newer (the Supabase client needs a native WebSocket).
 
 ```bash
 npm install
