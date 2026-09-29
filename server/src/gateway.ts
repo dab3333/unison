@@ -1,0 +1,120 @@
+import type { IncomingMessage, Server } from 'node:http'
+import { WebSocketServer, type WebSocket } from 'ws'
+import { clientMessageSchema, type ErrorCode, type ServerMessage } from '@unison/shared'
+import type { Auth } from './auth'
+import { hashIp } from './privacy'
+import type { Conn, Room } from './room'
+import type { RoomManager } from './roomManager'
+
+export interface GatewayDeps {
+  auth: Auth
+  manager: RoomManager
+  ipSecret: string
+  now: () => number
+  nextId: () => string
+  maxSockets: number
+  maxPerIp: number
+  trustProxy: boolean
+  helloTimeoutMs?: number
+}
+
+export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const fly = req.headers['fly-client-ip']
+    if (typeof fly === 'string') return fly
+    const xff = req.headers['x-forwarded-for']
+    if (typeof xff === 'string') return xff.split(',')[0]!.trim()
+  }
+  return req.socket.remoteAddress ?? 'unknown'
+}
+
+const send = (ws: WebSocket, m: ServerMessage) => {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m))
+}
+const errorMsg = (code: ErrorCode, message: string = code): ServerMessage => ({ type: 'error', code, message })
+
+export function attachGateway(server: Server, d: GatewayDeps): { close(): void } {
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 })
+  const perIp = new Map<string, number>()
+  let total = 0
+
+  server.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (url.pathname !== '/ws') return void socket.destroy()
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req, url.searchParams.get('room') ?? ''))
+  })
+
+  wss.on('connection', (ws: WebSocket, req: IncomingMessage, slug: string) => {
+    ws.on('error', () => {})
+    const ipHash = hashIp(clientIp(req, d.trustProxy), d.ipSecret, d.now())
+    if (total >= d.maxSockets || (perIp.get(ipHash) ?? 0) >= d.maxPerIp) return void ws.close(1013, 'busy')
+    total++
+    perIp.set(ipHash, (perIp.get(ipHash) ?? 0) + 1)
+
+    const conn: Conn = {
+      id: d.nextId(),
+      ipHash,
+      send: (m) => send(ws, m),
+      close: (code, reason) => ws.close(code, reason),
+    }
+    let room: Room | null = null
+    let joining = false
+    const helloTimer = setTimeout(() => {
+      if (!room) ws.close(4000, 'hello timeout')
+    }, d.helloTimeoutMs ?? 5000)
+
+    ws.on('message', async (raw) => {
+      let json: unknown
+      try {
+        json = JSON.parse(raw.toString())
+      } catch {
+        return send(ws, errorMsg('bad_request', 'invalid json'))
+      }
+      const parsed = clientMessageSchema.safeParse(json)
+      if (!parsed.success) return send(ws, errorMsg('bad_request', 'invalid message'))
+      const msg = parsed.data
+
+      if (room) return room.handle(conn.id, msg)
+      if (msg.type !== 'hello') return send(ws, errorMsg('unauthorized', 'send hello first'))
+      if (joining) return
+      joining = true
+      try {
+        const identity = await d.auth.verify(msg.token)
+        if (!identity) {
+          send(ws, errorMsg('unauthorized'))
+          return void ws.close(4002, 'unauthorized')
+        }
+        const got = await d.manager.get(slug)
+        if (!got.ok) {
+          send(ws, errorMsg(got.code === 'busy' ? 'room_full' : 'not_found'))
+          return void ws.close(4006, got.code)
+        }
+        const res = got.room.join(conn, identity, msg.password)
+        if (!res.ok) {
+          send(ws, errorMsg(res.code))
+          return void ws.close(res.code === 'banned' ? 4004 : 4006, res.code)
+        }
+        if (ws.readyState !== ws.OPEN) return void got.room.leave(conn.id) // client left during the join
+        room = got.room
+      } finally {
+        joining = false
+      }
+    })
+
+    ws.on('close', () => {
+      clearTimeout(helloTimer)
+      room?.leave(conn.id)
+      total--
+      const left = (perIp.get(ipHash) ?? 1) - 1
+      if (left <= 0) perIp.delete(ipHash)
+      else perIp.set(ipHash, left)
+    })
+  })
+
+  return {
+    close: () => {
+      for (const c of wss.clients) c.terminate()
+      wss.close()
+    },
+  }
+}
