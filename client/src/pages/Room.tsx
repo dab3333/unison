@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import type { Source } from '@unison/shared'
 import { Chat } from '../components/Chat'
@@ -8,6 +8,7 @@ import { SourcePicker } from '../components/SourcePicker'
 import { api } from '../lib/api'
 import { fmt } from '../lib/format'
 import { getIdentity } from '../lib/identity'
+import { fileForSource, pickedFor, type PickedFile } from '../room/localFile'
 import { useRoom } from '../room/useRoom'
 
 const CLOSED_TEXT: Record<number, string> = {
@@ -34,11 +35,15 @@ function RoomView({ slug }: { slug: string }) {
   const [sheet, setSheet] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [picking, setPicking] = useState(false)
-  const [localFile, setLocalFile] = useState<File | null>(null)
+  const [picked, setPicked] = useState<PickedFile | null>(null)
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [offset, setOffset] = useState(0)
   const [copied, setCopied] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => () => clearTimeout(copiedTimer.current), [])
+  const localFile = useMemo(() => fileForSource(picked, room.source), [picked, room.source])
   useEffect(() => { api.roomInfo(slug).then((i) => setName(i.name)).catch(() => {}) }, [slug])
   useEffect(() => {
     if (!room.toast) return
@@ -70,9 +75,16 @@ function RoomView({ slug }: { slug: string }) {
     setPicking(false)
   }
   async function invite() {
-    await navigator.clipboard.writeText(`${window.location.origin}/r/${slug}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    const url = `${window.location.origin}/r/${slug}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setInviteUrl(null)
+      setCopied(true)
+      clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setInviteUrl(url) // clipboard unavailable: show the link so it can be copied by hand
+    }
   }
 
   let overlay: ReactNode
@@ -83,7 +95,7 @@ function RoomView({ slug }: { slug: string }) {
       <div className="overlay">
         <div className="stack" style={{ width: '100%', maxWidth: 420 }}>
           <h3>Pick something to watch</h3>
-          <SourcePicker onSource={setSource} onFile={setLocalFile} />
+          <SourcePicker onSource={setSource} onFile={(f, src) => setPicked(pickedFor(f, src))} />
           {room.source && <button className="link-like" onClick={() => setPicking(false)}>Cancel</button>}
         </div>
       </div>
@@ -112,7 +124,7 @@ function RoomView({ slug }: { slug: string }) {
             source={room.source}
             canControl={canControl}
             localFile={localFile}
-            onPickFile={setLocalFile}
+            onPickFile={(f) => { if (room.source) setPicked(pickedFor(f, room.source)) }}
             blocked={room.blocked}
             onUnblock={() => { room.clearBlocked(); room.sync.reconcile() }}
             onFullscreen={() => void stageRef.current?.requestFullscreen?.().catch(() => {})}
@@ -153,6 +165,12 @@ function RoomView({ slug }: { slug: string }) {
         />
       </div>
 
+      {inviteUrl && (
+        <div className="notice" role="status" style={{ position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 10 }}>
+          Could not copy automatically. Share this link: <b style={{ wordBreak: 'break-all', userSelect: 'all' }}>{inviteUrl}</b>
+          <button className="btn ghost" onClick={() => setInviteUrl(null)}>Dismiss</button>
+        </div>
+      )}
       {room.status === 'reconnecting' && <div className="toast" role="status">Reconnecting...</div>}
       {room.toast && <div className="toast" role="status">{room.toast}</div>}
     </div>

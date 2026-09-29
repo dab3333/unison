@@ -13,7 +13,7 @@ function readDuration(file: File): Promise<number> {
   })
 }
 
-export function SourcePicker({ onSource, onFile }: { onSource(s: Source): void; onFile(f: File): void }) {
+export function SourcePicker({ onSource, onFile }: { onSource(s: Source): void; onFile(f: File, source: Source): void }) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -33,8 +33,9 @@ export function SourcePicker({ onSource, onFile }: { onSource(s: Source): void; 
     try {
       const duration = await readDuration(f)
       if (!Number.isFinite(duration) || duration <= 0) throw new Error('no duration')
-      onFile(f)
-      onSource({ type: 'file', name: f.name, size: f.size, duration })
+      const source: Source = { type: 'file', name: f.name, size: f.size, duration }
+      onFile(f, source)
+      onSource(source)
     } catch {
       setError('Could not read that video file.')
     } finally {
