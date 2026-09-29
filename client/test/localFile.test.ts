@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Source } from '@unison/shared'
+import { validateSource } from '@unison/shared'
 import { fileForSource, pickedFor } from '../src/room/localFile'
 
 const file = { name: 'a.mp4' } as File
@@ -25,5 +26,32 @@ describe('fileForSource', () => {
   })
   it('returns null for a URL source after picking for a file source', () => {
     expect(fileForSource(pickedFor(file, S), { type: 'url', url: 'https://x.test/a.mp4' } as Source)).toBeNull()
+  })
+})
+
+describe('fileForSource with server-normalized sources', () => {
+  const odd: Record<string, string> = {
+    control: 'a\u0007b.mp4',
+    zeroWidth: 'a​b‮c.mp4',
+    doubleSpace: 'my  movie.mp4',
+    padded: '  movie.mp4  ',
+    long: '  ' + 'x'.repeat(190) + '  y.mp4',   // 200 chars, the schema maximum; longer is rejected by the server outright
+  }
+  for (const [label, name] of Object.entries(odd)) {
+    it(`matches the echoed source for a ${label} name`, () => {
+      const raw: Source = { type: 'file', name, size: 10, duration: 60 }
+      const echoed = validateSource(raw)!
+      expect(echoed).not.toBeNull()
+      expect(fileForSource(pickedFor(file, raw), echoed)).toBe(file)
+    })
+  }
+  it('ignores extra fields', () => {
+    const raw = { type: 'file', name: 'a.mp4', size: 10, duration: 60, extra: 1 } as unknown as Source
+    expect(fileForSource(pickedFor(file, raw), S)).toBe(file)
+  })
+  it('still rejects a different size or normalized name', () => {
+    const raw: Source = { type: 'file', name: 'my  movie.mp4', size: 10, duration: 60 }
+    expect(fileForSource(pickedFor(file, raw), validateSource({ ...raw, size: 11 })!)).toBeNull()
+    expect(fileForSource(pickedFor(file, raw), validateSource({ ...raw, name: 'my other.mp4' })!)).toBeNull()
   })
 })

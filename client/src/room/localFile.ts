@@ -1,13 +1,17 @@
-import type { Source } from '@unison/shared'
+import { validateSource, type Source } from '@unison/shared'
 
 export interface PickedFile {
   file: File
   sourceKey: string
 }
 
-/** Order-independent identity of a source, so a host-tagged key matches the server's echo. */
+/**
+ * Identity of a source, robust to the server's normalization: normalize the same way the server
+ * does, then key only on the fields that matter, in a fixed order.
+ */
 export function sourceKeyOf(source: Source): string {
-  return JSON.stringify(Object.entries(source).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  const n = validateSource(source) ?? source
+  return JSON.stringify([n.type, n.id ?? null, n.url ?? null, n.name ?? null, n.size ?? null, n.duration ?? null])
 }
 
 export function pickedFor(file: File, source: Source): PickedFile {
