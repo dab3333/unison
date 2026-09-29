@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F0B1E">
+<title>Sign in - Unison</title>
+<link rel="icon" href="logo-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav"><a class="brand" href="index.html" aria-label="Unison home"><img src="logo-mark.svg" alt=""><span>unison</span></a></nav>
+  <main class="center">
+    <div class="card">
+      <h2>Sign in to host</h2>
+      <p class="muted" style="margin-top:6px">You only need an account to create rooms. Friends can join without one.</p>
+      <div style="display:grid;gap:10px;margin-top:20px">
+        <a class="btn block" href="dashboard.html">Continue with Google</a>
+        <a class="btn block" href="dashboard.html">Continue with Discord</a>
+      </div>
+      <div class="divider">or</div>
+      <form onsubmit="location='dashboard.html';return false">
+        <label for="email" style="margin-top:0">Email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+        <button class="btn primary block" style="margin-top:14px">Email me a magic link</button>
+      </form>
+      <p class="muted" style="font-size:13px;margin-top:16px">No passwords. By continuing you agree to the Terms.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

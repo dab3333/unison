@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F0B1E">
+<title>Room - Unison</title>
+<link rel="icon" href="logo-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="room">
+  <header class="room-top">
+    <a href="dashboard.html"><img src="logo-mark.svg" alt="Unison" style="height:38px;display:block"></a>
+    <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Friday movie night</strong>
+    <button class="btn hide-desktop" id="open-members" aria-controls="sheet"><svg class="icon" viewBox="0 0 24 24"><path d="M16 11a3 3 0 100-6 3 3 0 000 6zM8 11a3 3 0 100-6 3 3 0 000 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-.9.1 1.2.8 1.9 1.9 1.9 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg> 3</button>
+    <button class="btn">Invite</button>
+  </header>
+
+  <div class="stage">
+    <div class="video-col">
+      <div class="player">
+        <span class="pill live sync">In sync</span>
+        <button class="big" id="play" aria-label="Play or pause"><svg class="icon" id="play-icon" viewBox="0 0 24 24" style="width:28px;height:28px"><path d="M8 5v14l11-7z"/></svg></button>
+        <div class="controls">
+          <div class="bar"><i id="prog"></i></div>
+          <div class="ctl-row"><span id="time">12:31</span><span>Source: YouTube</span><span>1:48:00</span></div>
+        </div>
+      </div>
+
+      <!-- Members: bottom sheet on phones, side block under the video on desktop -->
+      <aside class="sheet" id="sheet" aria-label="Members">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3>In this room</h3><button class="btn ghost hide-desktop" id="close-members">Done</button>
+        </div>
+        <div class="member"><span class="who"><span class="avatar" style="background:var(--amber)">M</span>Maya <span class="pill host" style="margin-left:8px">Host</span></span></div>
+        <div class="member"><span class="who"><span class="avatar" style="background:var(--violet)">L</span>Leo</span><button class="btn">Mute</button></div>
+        <div class="member"><span class="who"><span class="avatar" style="background:var(--coral)">P</span>PopcornPat <span class="pill" style="margin-left:8px">Guest</span></span><button class="btn danger">Kick</button></div>
+      </aside>
+    </div>
+
+    <section class="chat" aria-label="Chat">
+      <div class="msgs" id="msgs" aria-live="polite">
+        <div class="msg"><span class="sys">Maya started the video</span></div>
+        <div class="msg"><b style="color:var(--amber)">Maya</b>ok everyone ready?</div>
+        <div class="msg"><b style="color:var(--violet)">Leo</b>ready!</div>
+        <div class="msg"><b style="color:var(--coral)">PopcornPat</b>joined late, synced already</div>
+      </div>
+      <form class="composer" id="composer">
+        <input id="text" placeholder="Say something" maxlength="500" autocomplete="off" aria-label="Message">
+        <button class="btn primary">Send</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<script>
+  var sheet = document.getElementById('sheet');
+  document.getElementById('open-members').onclick = function(){ sheet.classList.add('open'); };
+  document.getElementById('close-members').onclick = function(){ sheet.classList.remove('open'); };
+
+  // fake playback so the prototype feels alive
+  var playing = false, pct = 32, btn = document.getElementById('play'), prog = document.getElementById('prog');
+  var icon = document.getElementById('play-icon');
+  btn.onclick = function(){
+    playing = !playing;
+    icon.innerHTML = playing ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  };
+  setInterval(function(){ if(playing){ pct = Math.min(100, pct + 0.05); prog.style.width = pct + '%'; } }, 100);
+
+  // chat (text only, never innerHTML, mirrors the spec's XSS rule)
+  var msgs = document.getElementById('msgs');
+  document.getElementById('composer').onsubmit = function(e){
+    e.preventDefault();
+    var input = document.getElementById('text'), v = input.value.trim();
+    if(!v) return;
+    var row = document.createElement('div'), who = document.createElement('b');
+    row.className = 'msg'; who.textContent = 'You'; who.style.color = 'var(--ok)';
+    row.appendChild(who); row.appendChild(document.createTextNode(v));
+    msgs.appendChild(row); msgs.scrollTop = msgs.scrollHeight; input.value = '';
+  };
+</script>
+</body>
+</html>

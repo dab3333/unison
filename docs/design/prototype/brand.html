@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F0B1E">
+<title>Brand - Unison</title>
+<link rel="icon" href="logo-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .sw{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:720px){.sw{grid-template-columns:repeat(4,1fr)}}
+  .sw div{border-radius:12px;padding:14px;min-height:96px;display:flex;flex-direction:column;justify-content:flex-end;font-size:13px;font-weight:600}
+  .sec{padding:28px 0;border-top:1px solid var(--line)}
+  .logos{display:grid;gap:12px}
+  @media(min-width:720px){.logos{grid-template-columns:repeat(2,1fr)}}
+  .logos .card{display:grid;place-items:center;min-height:130px}
+  .light{background:#F4F1FF;border-color:#F4F1FF}
+  .app-icon{width:96px;height:96px;border-radius:22px;background:var(--bg);display:grid;place-items:center;border:1px solid var(--line)}
+  .app-icon img{width:64px}
+  ul.rules{padding-left:20px;color:var(--muted)} ul.rules li{margin:6px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav"><a class="brand" href="index.html" aria-label="Unison home"><img src="logo-mark.svg" alt=""><span>unison</span></a><a class="btn" href="index.html">Back to site</a></nav>
+
+  <h1 style="margin-top:16px">Brand <span class="accent">sketch</span></h1>
+  <p class="muted" style="margin-top:10px;max-width:38em">A first proposal for review. Nothing here is final.</p>
+
+  <section class="sec">
+    <h2>Logo</h2>
+    <p class="muted" style="margin:8px 0 16px">Two overlapping circles are two people. Where they overlap, the play button appears: everyone in unison. Violet and coral blend into an amber core.</p>
+    <div class="logos">
+      <div class="card"><img src="logo.svg" alt="Unison logo" height="52"></div>
+      <div class="card light"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 64" height="52"><defs><clipPath id="b"><circle cx="24" cy="32" r="18"/></clipPath></defs><circle cx="24" cy="32" r="18" fill="#7C6CFF"/><circle cx="40" cy="32" r="18" fill="#FF7A59"/><circle cx="40" cy="32" r="18" fill="#FFC857" clip-path="url(#b)"/><path d="M29 24.5v15l11-7.5z" fill="#1B1533" stroke="#1B1533" stroke-width="2" stroke-linejoin="round"/><text x="70" y="44" font-family="Sora,Segoe UI,sans-serif" font-size="34" font-weight="700" letter-spacing="-1" fill="#1B1533">unison</text></svg></div>
+      <div class="card" style="grid-auto-flow:column;gap:20px"><div class="app-icon"><img src="logo-mark.svg" alt=""></div><img src="logo-mark.svg" width="32" alt=""><img src="logo-mark.svg" width="16" alt=""><span class="muted" style="font-size:13px">App icon, header mark, favicon</span></div>
+      <div class="card"><div style="font-family:var(--font-head);font-size:2rem;font-weight:700;letter-spacing:-.04em">unison<span style="color:var(--amber)">.</span></div><span class="muted" style="font-size:13px">Wordmark only, lowercase</span></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Color</h2>
+    <p class="muted" style="margin:8px 0 16px">Dark by default: a room should feel like a dim cinema.</p>
+    <div class="sw">
+      <div style="background:#0F0B1E;border:1px solid var(--line)">Night #0F0B1E<span class="muted">Background</span></div>
+      <div style="background:#1A1530;border:1px solid var(--line)">Surface #1A1530<span class="muted">Cards</span></div>
+      <div style="background:#7C6CFF;color:#0F0B1E">Violet #7C6CFF<span>Primary, person A</span></div>
+      <div style="background:#FF7A59;color:#0F0B1E">Coral #FF7A59<span>Accent, person B</span></div>
+      <div style="background:#FFC857;color:#0F0B1E">Amber #FFC857<span>Highlight, host, focus</span></div>
+      <div style="background:#4ADE99;color:#0F0B1E">Green #4ADE99<span>Live, in sync</span></div>
+      <div style="background:#FF5C7A;color:#0F0B1E">Rose #FF5C7A<span>Danger</span></div>
+      <div style="background:#F4F1FF;color:#0F0B1E">Text #F4F1FF<span>Primary text</span></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Type</h2>
+    <div class="card" style="margin-top:14px">
+      <div style="font-family:var(--font-head);font-size:2.4rem;font-weight:700;letter-spacing:-.03em">Sora Bold</div>
+      <p class="muted">Headings and the wordmark. Free on Google Fonts.</p>
+      <div style="font-size:1.2rem;margin-top:16px;font-weight:600">Inter Regular and SemiBold</div>
+      <p class="muted">Body, chat, and controls. 16px minimum so iOS never zooms inputs.</p>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Voice and rules</h2>
+    <ul class="rules">
+      <li>Warm, short, a little playful: "Press play, together."</li>
+      <li>Lowercase wordmark. Sentence case everywhere else.</li>
+      <li>Flat color only: no gradients, glows, or glass effects. Violet is the single action color; amber marks emphasis.</li>
+      <li>Icons are simple solid SVGs. No emoji in the interface.</li>
+      <li>Every tap target is at least 44px. Phones are the design baseline.</li>
+      <li>Contrast: Text on Night is above 15:1. Dark text sits on the bright brand colors.</li>
+    </ul>
+  </section>
+
+  <section class="sec">
+    <h2>Pages in this prototype</h2>
+    <div class="row-actions">
+      <a class="btn" href="index.html">Landing</a><a class="btn" href="signin.html">Sign in</a><a class="btn" href="dashboard.html">Dashboard</a><a class="btn" href="join.html">Guest join</a><a class="btn" href="room.html">Room</a>
+    </div>
+  </section>
+  <footer>Unison prototype</footer>
+</div>
+</body>
+</html>

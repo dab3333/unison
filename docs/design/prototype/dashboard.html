@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F0B1E">
+<title>My rooms - Unison</title>
+<link rel="icon" href="logo-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <a class="brand" href="index.html" aria-label="Unison home"><img src="logo-mark.svg" alt=""><span>unison</span></a>
+    <a class="btn ghost" href="index.html">Sign out</a>
+  </nav>
+
+  <main style="padding:16px 0 40px">
+    <h2>My rooms</h2>
+    <p class="muted">3 active rooms max. Empty rooms close after 10 minutes.</p>
+
+    <div class="card" style="margin-top:20px">
+      <h3>New room</h3>
+      <label for="rname">Room name</label>
+      <input id="rname" placeholder="Friday movie night">
+      <div class="toggle" style="margin-top:8px"><span>Allow guests</span><input type="checkbox" checked aria-label="Allow guests"></div>
+      <div class="toggle"><span>Everyone can control playback</span><input type="checkbox" aria-label="Everyone can control playback"></div>
+      <label for="cap">Max viewers</label>
+      <select id="cap"><option>5</option><option selected>15</option><option>30</option></select>
+      <a class="btn primary block" style="margin-top:16px" href="room.html">Create room</a>
+    </div>
+
+    <div class="rooms">
+      <div class="card">
+        <div class="room-row"><div class="meta"><h3>Friday movie night</h3><span class="muted" style="font-size:14px">unison.app/r/quiet-otter-42</span></div><span class="pill live">3 watching</span></div>
+        <div class="row-actions"><a class="btn primary" href="room.html">Open</a><button class="btn">Copy link</button><button class="btn danger">Close</button></div>
+      </div>
+      <div class="card">
+        <div class="room-row"><div class="meta"><h3>Anime marathon</h3><span class="muted" style="font-size:14px">unison.app/r/brave-fox-07</span></div><span class="pill">Empty</span></div>
+        <div class="row-actions"><a class="btn primary" href="room.html">Open</a><button class="btn">Copy link</button><button class="btn danger">Close</button></div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

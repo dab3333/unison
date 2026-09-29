@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F0B1E">
+<title>Join a room - Unison</title>
+<link rel="icon" href="logo-mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav"><a class="brand" href="index.html" aria-label="Unison home"><img src="logo-mark.svg" alt=""><span>unison</span></a></nav>
+  <main class="center">
+    <div class="card">
+      <span class="pill live">Live &middot; 3 watching</span>
+      <h2 style="margin-top:10px">Friday movie night</h2>
+      <p class="muted" style="margin-top:4px">Hosted by Maya</p>
+      <form onsubmit="location='room.html';return false">
+        <label for="nick">Pick a nickname</label>
+        <input id="nick" maxlength="24" placeholder="e.g. PopcornPat" autocomplete="nickname" required>
+        <label for="pw">Room password (if the host set one)</label>
+        <input id="pw" type="password" placeholder="Optional">
+        <button class="btn primary block" style="margin-top:16px">Join room</button>
+      </form>
+      <p class="muted" style="font-size:13px;margin-top:14px">No account needed. <a href="signin.html">Sign in</a> to host your own.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>
