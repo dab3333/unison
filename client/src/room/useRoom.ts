@@ -4,10 +4,13 @@ import { WS_URL } from '../lib/config'
 import { getIdentity } from '../lib/identity'
 import { RoomSocket, type SocketStatus } from '../net/roomSocket'
 import { SyncClient } from '../sync/syncClient'
+import { errorText, type SentKind } from './roomErrors'
 
 export interface RoomView {
   status: SocketStatus
   closeCode: number | null
+  /** The last server error code before a terminal close (e.g. bad_password with 4006). */
+  joinError: ErrorCode | null
   me: { id: string; role: Role } | null
   state: RoomState | null
   settings: PublicSettings | null
@@ -19,23 +22,16 @@ export interface RoomView {
   toast: string | null
   sync: SyncClient
   send(m: ClientMessage): void
+  /** A deliberate reconnect after a terminal close (e.g. "Use here" or a new password). */
+  reconnect(): void
   clearBlocked(): void
   dismissToast(): void
-}
-
-function errorText(code: ErrorCode): string | null {
-  switch (code) {
-    case 'forbidden': return 'You do not have permission to do that.'
-    case 'rate_limited': return 'Slow down a little.'
-    case 'bad_request': return 'That did not work.'
-    case 'stale': return null // the SyncClient silently snaps back
-    default: return null
-  }
 }
 
 export function useRoom(slug: string): RoomView {
   const [status, setStatus] = useState<SocketStatus>('connecting')
   const [closeCode, setCloseCode] = useState<number | null>(null)
+  const [joinError, setJoinError] = useState<ErrorCode | null>(null)
   const [me, setMe] = useState<{ id: string; role: Role } | null>(null)
   const [state, setState] = useState<RoomState | null>(null)
   const [settings, setSettings] = useState<PublicSettings | null>(null)
@@ -47,10 +43,17 @@ export function useRoom(slug: string): RoomView {
   const [toast, setToast] = useState<string | null>(null)
   const socketRef = useRef<RoomSocket | null>(null)
   const syncRef = useRef<SyncClient | null>(null)
+  const lastErrorRef = useRef<ErrorCode | null>(null)
+  const lastSentRef = useRef<SentKind>(null)
+  // Every outgoing message goes through here, so an error reply can be matched to the kind of request that caused it.
+  const out = useCallback((m: ClientMessage) => {
+    if (m.type === 'control' || m.type === 'chat' || m.type === 'mod' || m.type === 'settings') lastSentRef.current = m.type
+    socketRef.current?.send(m)
+  }, [])
 
   if (!syncRef.current) {
     syncRef.current = new SyncClient({
-      send: (m) => socketRef.current?.send(m),
+      send: out,
       now: Date.now,
       onSource: setSource,
       onBlocked: () => setBlocked(true),
@@ -76,13 +79,21 @@ export function useRoom(slug: string): RoomView {
       onStatus: (s, info) => {
         setStatus(s)
         // A new connect attempt clears any earlier terminal code; an intentional close has no code.
-        if (s === 'connecting') setCloseCode(null)
-        if (info) setCloseCode(info.code)
+        if (s === 'connecting') {
+          setCloseCode(null)
+          setJoinError(null)
+          lastErrorRef.current = null
+        }
+        if (info) {
+          setCloseCode(info.code)
+          setJoinError(lastErrorRef.current)
+        }
       },
       onMessage: (m) => {
         sync.handleServer(m)
         switch (m.type) {
           case 'welcome':
+            lastErrorRef.current = null
             setMe({ id: m.you, role: m.role })
             setSettings(m.settings)
             setMembers(m.members)
@@ -108,7 +119,8 @@ export function useRoom(slug: string): RoomView {
             setSettings(m.settings)
             break
           case 'error': {
-            const text = errorText(m.code)
+            lastErrorRef.current = m.code
+            const text = errorText(m.code, lastSentRef.current)
             if (text) setToast(text)
             break
           }
@@ -123,9 +135,12 @@ export function useRoom(slug: string): RoomView {
     }
   }, [slug, sync])
 
-  const send = useCallback((m: ClientMessage) => socketRef.current?.send(m), [])
+  const reconnect = useCallback(() => socketRef.current?.connect(), [])
   const clearBlocked = useCallback(() => setBlocked(false), [])
   const dismissToast = useCallback(() => setToast(null), [])
 
-  return { status, closeCode, me, state, settings, members, chat, source, blocked, mismatch, toast, sync, send, clearBlocked, dismissToast }
+  return {
+    status, closeCode, joinError, me, state, settings, members, chat, source, blocked, mismatch, toast, sync,
+    send: out, reconnect, clearBlocked, dismissToast,
+  }
 }

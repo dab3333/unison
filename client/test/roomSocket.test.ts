@@ -79,8 +79,8 @@ describe('RoomSocket', () => {
     expect(timers.at(-1)!.ms).toBe(15000)
   })
 
-  it('does not reconnect after kicked, banned, closed, refused or rate-limit codes', () => {
-    for (const code of [4002, 4003, 4004, 4005, 4006, 4008]) {
+  it('does not reconnect after replaced, kicked, banned, closed, refused or rate-limit codes', () => {
+    for (const code of [4001, 4002, 4003, 4004, 4005, 4006, 4008]) {
       const { sock, timers, statuses } = make()
       sock.connect()
       FakeWS.all[0]!.onclose!({ code })
@@ -192,12 +192,25 @@ describe('RoomSocket', () => {
     expect(ws1.sent.filter(s => s.includes('ping'))).toHaveLength(0)
   })
 
-  it('e. 4001 (replaced) is NOT fatal: reconnects with backoff', () => {
-    const { sock, timers } = make()
+  it('e. 4001 (replaced by another tab) is fatal: no reconnect loop between two tabs', () => {
+    const { sock, timers, statuses } = make()
     sock.connect()
     FakeWS.all[0]!.onclose!({ code: 4001 })
-    expect(timers).toHaveLength(1)
-    expect(timers[0]!.ms).toBe(500)
+    expect(timers).toHaveLength(0)
+    expect(statuses.at(-1)).toEqual(['closed', 4001])
+  })
+
+  it('e2. an explicit connect() after a fatal close opens a fresh socket and says hello', async () => {
+    const { sock, timers, statuses } = make()
+    sock.connect()
+    FakeWS.all[0]!.onclose!({ code: 1006 })
+    timers[0]!.fn() // one failed attempt, so the backoff counter is non-zero
+    FakeWS.all[1]!.onclose!({ code: 4001 })
+    sock.connect()
+    expect(FakeWS.all).toHaveLength(3)
+    expect(statuses.at(-1)).toEqual(['connecting', undefined]) // a deliberate reconnect starts fresh
+    await FakeWS.all[2]!.onopen!()
+    expect(JSON.parse(FakeWS.all[2]!.sent[0]!)).toEqual({ type: 'hello', token: 't' })
   })
 
   it('f. getHello invoked again on each reconnect', async () => {

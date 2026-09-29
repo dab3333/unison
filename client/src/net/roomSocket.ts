@@ -22,8 +22,11 @@ export interface RoomSocketOpts {
   random?(): number
 }
 
-/** Kicked, banned, room closed, join refused, unauthorized, rate limit: reconnecting would not help. */
-const FATAL = new Set([4002, 4003, 4004, 4005, 4006, 4008])
+/**
+ * Replaced by another tab, kicked, banned, room closed, join refused, unauthorized, rate limit: reconnecting
+ * would not help (for 4001 it would steal the room back from the other tab, forever). Only an explicit connect() retries.
+ */
+const FATAL = new Set([4001, 4002, 4003, 4004, 4005, 4006, 4008])
 
 export class RoomSocket {
   private ws: WSLike | null = null
@@ -35,6 +38,7 @@ export class RoomSocket {
 
   connect(): void {
     this.stopped = false
+    this.attempt = 0 // a deliberate (re)connect starts fresh
     // Tear down any existing socket and pending timer before opening a new one
     if (this.ws) {
       this.ws.onopen = null

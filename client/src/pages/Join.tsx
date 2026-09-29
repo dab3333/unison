@@ -1,17 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Brand } from '../components/Brand'
 import { api, messageFor, type RoomInfo } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { reusableGuestToken } from '../lib/guestToken'
 import { loadGuest, saveGuest } from '../lib/identity'
 
 export default function Join() {
   const { slug = '' } = useParams()
   const { user } = useAuth()
   const nav = useNavigate()
+  const location = useLocation()
+  const carried = (location.state as { nickname?: string } | null)?.nickname // from a room whose guest token expired
   const [info, setInfo] = useState<RoomInfo | null>(null)
   const [missing, setMissing] = useState(false)
-  const [nick, setNick] = useState(loadGuest()?.nickname ?? '')
+  const [nick, setNick] = useState(carried ?? loadGuest()?.nickname ?? '')
   const [pw, setPw] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -25,8 +28,7 @@ export default function Join() {
     try {
       if (!user) {
         const name = nick.trim()
-        const existing = loadGuest()
-        const token = existing && existing.nickname === name ? existing.token : (await api.createGuest(name)).token
+        const token = reusableGuestToken(loadGuest(), name, Date.now()) ?? (await api.createGuest(name)).token
         saveGuest({ token, nickname: name })
       }
       try {

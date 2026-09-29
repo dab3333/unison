@@ -1,9 +1,10 @@
+import type { StoredGuest } from './guestToken'
 import { supabase } from './supabase'
 
 export const E2E = import.meta.env.VITE_E2E === '1'
 const GUEST_KEY = 'unison.guest'
 
-export interface StoredGuest { token: string; nickname: string }
+export type { StoredGuest } from './guestToken'
 export interface Identity { token: string; isGuest: boolean }
 
 export function loadGuest(): StoredGuest | null {
@@ -18,6 +19,14 @@ export function saveGuest(g: StoredGuest): void {
     localStorage.setItem(GUEST_KEY, JSON.stringify(g))
   } catch {
     /* private mode: the guest just re-registers next visit */
+  }
+}
+/** Drops a guest token the server no longer accepts (expired, or the secret was rotated). */
+export function clearGuest(): void {
+  try {
+    localStorage.removeItem(GUEST_KEY)
+  } catch {
+    /* private mode */
   }
 }
 export async function getAccessToken(): Promise<string | null> {

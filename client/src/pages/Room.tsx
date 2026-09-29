@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { Source } from '@unison/shared'
 import { Chat } from '../components/Chat'
 import { Members } from '../components/Members'
@@ -9,24 +9,27 @@ import { SettingsPanel } from '../components/SettingsPanel'
 import { SourcePicker } from '../components/SourcePicker'
 import { api } from '../lib/api'
 import { fmt } from '../lib/format'
-import { getIdentity } from '../lib/identity'
+import { clearGuest, getIdentity, loadGuest } from '../lib/identity'
 import { fileForSource, pickedFor, type PickedFile } from '../room/localFile'
 import { availableOps, canModerateChat, type ModOp } from '../room/permissions'
+import { closedView } from '../room/roomErrors'
 import { useRoom } from '../room/useRoom'
 
-const CLOSED_TEXT: Record<number, string> = {
-  4002: 'Your session expired. Join again to continue.',
-  4003: 'You were removed from this room.',
-  4004: 'You are banned from this room.',
-  4005: 'This room was closed.',
-  4006: 'Could not join: the room is full, guests are off, the password was wrong, or it no longer exists.',
-  4008: 'You were disconnected for sending too many messages.',
+const pwKey = (slug: string) => `unison.pw.${slug}`
+function storedPassword(slug: string): string | null {
+  try {
+    return sessionStorage.getItem(pwKey(slug))
+  } catch {
+    return null // private mode
+  }
 }
 
 export default function Room() {
   const { slug = '' } = useParams()
   const [hasIdentity, setHasIdentity] = useState<boolean | null>(null)
-  useEffect(() => { void getIdentity().then((i) => setHasIdentity(!!i)) }, [])
+  useEffect(() => {
+    getIdentity().then((i) => setHasIdentity(!!i)).catch(() => setHasIdentity(false)) // treat a failure as no identity
+  }, [])
   if (hasIdentity === null) return null
   if (!hasIdentity) return <Navigate to={`/join/${slug}`} replace />
   return <RoomView slug={slug} />
@@ -46,6 +49,8 @@ function RoomView({ slug }: { slug: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
+  const nav = useNavigate()
+  const [pwInput, setPwInput] = useState('')
 
   useEffect(() => () => clearTimeout(copiedTimer.current), [])
   const localFile = useMemo(() => fileForSource(picked, room.source), [picked, room.source])
@@ -57,15 +62,62 @@ function RoomView({ slug }: { slug: string }) {
   }, [room.toast, room.dismissToast])
 
   // A 'closed' status without a code is an intentional close (e.g. StrictMode cleanup), not terminal.
-  if (room.status === 'closed' && room.closeCode !== null) {
+  const closed = room.status === 'closed' && room.closeCode !== null ? closedView(room.closeCode, room.joinError) : null
+  const rejoin = closed?.kind === 'rejoin'
+  useEffect(() => {
+    if (!rejoin) return
+    // The server no longer accepts this identity (expired 30-day guest token, rotated secret): start over.
+    const nickname = loadGuest()?.nickname
+    clearGuest()
+    nav(`/join/${slug}`, { replace: true, state: { nickname } })
+  }, [rejoin, nav, slug])
+
+  if (closed) {
+    let body: ReactNode
+    if (closed.kind === 'replaced') {
+      body = (
+        <>
+          <h2>{closed.text}</h2>
+          <p className="muted" style={{ marginTop: 6 }}>This room is open in another tab or on another device.</p>
+          <button className="btn primary block" style={{ marginTop: 16 }} onClick={room.reconnect}>Use here</button>
+          <Link className="btn block" style={{ marginTop: 8 }} to="/">Back to Unison</Link>
+        </>
+      )
+    } else if (closed.kind === 'password') {
+      const tried = storedPassword(slug) !== null
+      const submitPw = (e: FormEvent) => {
+        e.preventDefault()
+        try {
+          sessionStorage.setItem(pwKey(slug), pwInput)
+        } catch { /* private mode: nothing to send the password with */ }
+        room.reconnect()
+      }
+      body = (
+        <form onSubmit={submitPw}>
+          <h2>{name}</h2>
+          <p className="muted" style={{ marginTop: 6 }}>This room has a password.</p>
+          <label htmlFor="room-pw">Room password</label>
+          <input id="room-pw" type="password" required autoFocus value={pwInput} onChange={(e) => setPwInput(e.target.value)} />
+          {tried && <p className="err" role="alert">That password did not work.</p>}
+          <button className="btn primary block" style={{ marginTop: 16 }}>Join room</button>
+        </form>
+      )
+    } else if (closed.kind === 'rejoin') {
+      return null // redirecting to the join page
+    } else {
+      body = (
+        <>
+          <h2>Left the room</h2>
+          <p className="muted" style={{ marginTop: 6 }}>{closed.text}</p>
+          {closed.signIn && <Link className="btn block" style={{ marginTop: 16 }} to="/signin">Sign in</Link>}
+          <Link className="btn primary block" style={{ marginTop: 16 }} to="/">Back to Unison</Link>
+        </>
+      )
+    }
     return (
       <div className="wrap">
         <main className="center">
-          <div className="card">
-            <h2>Left the room</h2>
-            <p className="muted" style={{ marginTop: 6 }}>{CLOSED_TEXT[room.closeCode] ?? 'The connection was closed.'}</p>
-            <Link className="btn primary block" style={{ marginTop: 16 }} to="/">Back to Unison</Link>
-          </div>
+          <div className="card">{body}</div>
         </main>
       </div>
     )
