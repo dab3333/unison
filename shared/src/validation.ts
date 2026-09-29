@@ -45,7 +45,7 @@ export function validateSourceUrl(raw: string): UrlCheck {
   }
   if (u.protocol !== 'https:') return { ok: false, reason: 'https required' }
   if (u.username || u.password) return { ok: false, reason: 'credentials not allowed' }
-  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '')
   if (host.includes(':')) {
     if (isPrivateIPv6(host)) return { ok: false, reason: 'private address' }
   } else {

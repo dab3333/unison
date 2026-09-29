@@ -52,6 +52,11 @@ describe('validateSourceUrl', () => {
     'https://intranet/a.mp4',
     'https://printer.local/a.mp4',
     'https://db.internal/a.mp4',
+    'https://localhost./a.mp4',
+    'https://foo.local./a.mp4',
+    'https://db.internal./a.mp4',
+    'https://intranet./a.mp4',
+    'https://127.0.0.1./a.mp4',
     'javascript:alert(1)',
     'not a url',
   ]
@@ -63,6 +68,9 @@ describe('validateSourceUrl', () => {
       ok: true,
       url: 'https://cdn.example.com/movie.mp4?x=1',
     })
+  })
+  it('accepts a public host with a trailing dot', () => {
+    expect(validateSourceUrl('https://cdn.example.com./a.mp4').ok).toBe(true)
   })
   it('accepts 172.32.x (outside the private /12)', () => {
     expect(validateSourceUrl('https://172.32.0.1/a.mp4').ok).toBe(true)
