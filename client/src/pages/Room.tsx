@@ -4,11 +4,14 @@ import type { Source } from '@unison/shared'
 import { Chat } from '../components/Chat'
 import { Members } from '../components/Members'
 import { PlayerStage } from '../components/PlayerStage'
+import { ReportDialog } from '../components/ReportDialog'
+import { SettingsPanel } from '../components/SettingsPanel'
 import { SourcePicker } from '../components/SourcePicker'
 import { api } from '../lib/api'
 import { fmt } from '../lib/format'
 import { getIdentity } from '../lib/identity'
 import { fileForSource, pickedFor, type PickedFile } from '../room/localFile'
+import { availableOps, canModerateChat, type ModOp } from '../room/permissions'
 import { useRoom } from '../room/useRoom'
 
 const CLOSED_TEXT: Record<number, string> = {
@@ -40,6 +43,8 @@ function RoomView({ slug }: { slug: string }) {
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [offset, setOffset] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
   const stageRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => clearTimeout(copiedTimer.current), [])
@@ -69,6 +74,12 @@ function RoomView({ slug }: { slug: string }) {
   const role = room.me?.role
   const canControl = role === 'host' || room.settings?.controlMode === 'everyone'
   const chatEnabled = room.settings?.chatEnabled !== false || role === 'host'
+
+  const OP_LABEL: Record<ModOp, string> = { kick: 'Kick', mute: 'Mute', unmute: 'Unmute', ban: 'Ban', promote: 'Make mod', demote: 'Remove mod' }
+  function runOp(op: ModOp, target: { id: string; nickname: string }) {
+    if (op === 'ban' && !window.confirm(`Ban ${target.nickname} from this room?`)) return
+    room.send({ type: 'mod', op, target: target.id })
+  }
 
   function setSource(source: Source) {
     room.send({ type: 'control', version: room.state?.version ?? 0, action: 'setSource', source })
@@ -151,17 +162,33 @@ function RoomView({ slug }: { slug: string }) {
               <h3>In this room</h3>
               <button className="btn ghost hide-desktop" onClick={() => setSheet(false)}>Done</button>
             </div>
-            <Members members={room.members} meId={room.me?.id} />
+            <Members
+              members={room.members}
+              meId={room.me?.id}
+              actions={(m) =>
+                role
+                  ? availableOps(role, m).map((op) => (
+                      <button key={op} className={op === 'kick' || op === 'ban' ? 'btn danger' : 'btn'} onClick={() => runOp(op, m)}>
+                        {OP_LABEL[op]}
+                      </button>
+                    ))
+                  : null
+              }
+            />
+            <div className="row" style={{ marginTop: 8 }}>
+              {role === 'host' && <button className="btn" onClick={() => setSettingsOpen(true)}>Room settings</button>}
+              <button className="link-like" onClick={() => setReportOpen(true)}>Report this room</button>
+            </div>
           </aside>
         </div>
 
         <Chat
           messages={room.chat}
           enabled={chatEnabled}
-          canModerate={false}
+          canModerate={canModerateChat(role)}
           open={chatOpen}
           onSend={(text) => room.send({ type: 'chat', text })}
-          onDelete={() => {}}
+          onDelete={(id) => room.send({ type: 'mod', op: 'deleteMessage', target: id })}
         />
       </div>
 
@@ -171,6 +198,10 @@ function RoomView({ slug }: { slug: string }) {
           <button className="btn ghost" onClick={() => setInviteUrl(null)}>Dismiss</button>
         </div>
       )}
+      {settingsOpen && room.settings && (
+        <SettingsPanel settings={room.settings} onChange={(patch) => room.send({ type: 'settings', patch })} onClose={() => setSettingsOpen(false)} />
+      )}
+      {reportOpen && <ReportDialog slug={slug} onClose={() => setReportOpen(false)} />}
       {room.status === 'reconnecting' && <div className="toast" role="status">Reconnecting...</div>}
       {room.toast && <div className="toast" role="status">{room.toast}</div>}
     </div>
