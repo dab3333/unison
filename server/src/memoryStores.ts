@@ -1,4 +1,4 @@
-import type { RoomRecord, Stores, Report } from './stores'
+import { SlugTakenError, type RoomRecord, type Stores, type Report } from './stores'
 
 export function createMemoryStores(): Stores {
   const rooms = new Map<string, RoomRecord>()
@@ -7,7 +7,10 @@ export function createMemoryStores(): Stores {
   const clone = (r: RoomRecord): RoomRecord => ({ ...r, settings: { ...r.settings } })
   return {
     rooms: {
-      async create(r) { rooms.set(r.id, clone(r)) },
+      async create(r) {
+        if ([...rooms.values()].some((x) => x.slug === r.slug)) throw new SlugTakenError() // like the unique index
+        rooms.set(r.id, clone(r))
+      },
       async getBySlug(slug) {
         const r = [...rooms.values()].find((x) => x.slug === slug)
         return r ? clone(r) : null

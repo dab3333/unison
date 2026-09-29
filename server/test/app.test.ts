@@ -5,7 +5,7 @@ import { createApp } from '../src/app'
 import { createAuth } from '../src/auth'
 import { createMemoryStores } from '../src/memoryStores'
 import { RoomManager } from '../src/roomManager'
-import type { Stores } from '../src/stores'
+import { SlugTakenError, type Stores } from '../src/stores'
 import { record, OWNER } from './storeContract'
 
 const SB = 'sb-secret-1234567890'
@@ -136,5 +136,65 @@ describe('POST /rooms/:slug/report', () => {
     for (let i = 0; i < 6; i++) last = (await app.inject({ method: 'POST', url, payload: { reason: 'spam' }, remoteAddress: '198.51.100.9' })).statusCode
     expect(last).toBe(429)
     expect((await app.inject({ method: 'POST', url, payload: { reason: 'spam' }, remoteAddress: '198.51.100.10' })).statusCode).toBe(202)
+  })
+})
+
+describe('client IP and rate limits behind a proxy (I4)', () => {
+  it('keys the limiter on fly-client-ip, so a spoofed X-Forwarded-For does not help', async () => {
+    const proxied = await createApp({
+      auth, stores, manager, ipSecret: 'ip-secret-1234567890123456', clientOrigin: '*', now: Date.now, nextId: () => `id-${++n}`,
+      trustProxy: true,
+    })
+    const guest = (fly: string, xff: string) =>
+      proxied.inject({ method: 'POST', url: '/guest', payload: { nickname: 'x' }, headers: { 'fly-client-ip': fly, 'x-forwarded-for': xff } })
+    let last = 0
+    for (let i = 0; i < 21; i++) last = (await guest('203.0.113.5', `10.0.0.${i}`)).statusCode
+    expect(last).toBe(429)
+    expect((await guest('203.0.113.6', '10.0.0.1')).statusCode).toBe(200)
+    await proxied.close()
+  })
+  it('ignores forwarding headers when not trusting the proxy', async () => {
+    let last = 0
+    for (let i = 0; i < 21; i++) {
+      last = (await app.inject({
+        method: 'POST', url: '/guest', payload: { nickname: 'x' }, remoteAddress: '198.51.100.20',
+        headers: { 'fly-client-ip': `203.0.113.${i}`, 'x-forwarded-for': `10.0.0.${i}` },
+      })).statusCode
+    }
+    expect(last).toBe(429)
+  })
+})
+
+describe('room slugs (I5)', () => {
+  it('rate limits GET /rooms/:slug per IP at 60 per minute', async () => {
+    let last = 0
+    for (let i = 0; i < 61; i++) last = (await app.inject({ url: `/rooms/guess-${i}`, remoteAddress: '198.51.100.30' })).statusCode
+    expect(last).toBe(429)
+    expect((await app.inject({ url: '/rooms/guess-x', remoteAddress: '198.51.100.31' })).statusCode).toBe(404)
+  })
+  it('retries with a new slug when the store reports a unique violation', async () => {
+    const slugs = ['taken-slug-aaaaaa', 'fresh-slug-bbbbbb']
+    let creates = 0
+    const racy: Stores = {
+      ...stores,
+      rooms: {
+        ...stores.rooms,
+        // the pre-check passes, but another request wins the insert race for the first slug
+        create: async (r) => {
+          creates++
+          if (r.slug === 'taken-slug-aaaaaa') throw new SlugTakenError()
+          return stores.rooms.create(r)
+        },
+      },
+    }
+    const retrying = await createApp({
+      auth, stores: racy, manager, ipSecret: 'ip-secret-1234567890123456', clientOrigin: '*', now: Date.now,
+      nextId: () => `id-${++n}`, makeSlug: () => slugs.shift() ?? 'never-used-cccccc',
+    })
+    const res = await retrying.inject({ method: 'POST', url: '/rooms', headers: await bearer(), payload: { name: 'x' } })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().slug).toBe('fresh-slug-bbbbbb')
+    expect(creates).toBe(2)
+    await retrying.close()
   })
 })

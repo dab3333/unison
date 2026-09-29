@@ -26,20 +26,24 @@ export const guest = (id = 'g1', nickname = 'Pat'): Identity => ({ id, nickname,
 export function makeRoom(over: { settings?: Partial<RoomSettings>; bans?: string[]; password?: string } = {}) {
   let t = 1_000_000
   let n = 0
+  let verifyCalls = 0
   const persisted = { bans: [] as string[], settings: [] as RoomSettings[] }
   const room = new Room('room-1', 'quiet-otter-42', 'host-1', { ...defaultSettings, ...over.settings }, over.bans ?? [], {
     now: () => t,
     nextId: () => `id-${++n}`,
     hasPassword: !!over.password,
-    verifyPassword: (pw) => !over.password || pw === over.password,
+    verifyPassword: (pw) => {
+      verifyCalls++
+      return !over.password || pw === over.password
+    },
     persist: { ban: (k) => persisted.bans.push(k), saveSettings: (s) => persisted.settings.push(s) },
   })
-  return { room, persisted, advance: (ms: number) => (t += ms), now: () => t }
+  return { room, persisted, advance: (ms: number) => (t += ms), now: () => t, verifyCalls: () => verifyCalls }
 }
 
 /** Join an identity with a fresh FakeConn and return it. */
-export function joinAs(room: Room, identity: Identity, connId = `c-${identity.id}`, password?: string) {
-  const conn = new FakeConn(connId)
+export function joinAs(room: Room, identity: Identity, connId = `c-${identity.id}`, password?: string, ipHash?: string) {
+  const conn = new FakeConn(connId, ipHash)
   const result = room.join(conn, identity, password)
   return { conn, result }
 }

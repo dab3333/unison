@@ -355,3 +355,99 @@ describe('settings, heartbeat, lifecycle', () => {
     expect(late.conn.closed?.code).toBe(4005)
   })
 })
+
+describe('buffering abuse and feedback (I1, I2)', () => {
+  it('ignores repeated buffering reports that change nothing: no broadcasts', () => {
+    const { room, h, g } = loaded()
+    ctl(room, h.conn.id, { action: 'play', position: 0 })
+    room.handle(g.conn.id, { type: 'buffering', value: true })
+    expect(room.engine.state.isPlaying).toBe(false)
+    let before = h.conn.sent.length
+    for (let i = 0; i < 5; i++) room.handle(g.conn.id, { type: 'buffering', value: true })
+    expect(h.conn.sent.length).toBe(before)
+    room.handle(g.conn.id, { type: 'buffering', value: false })
+    expect(room.engine.state.isPlaying).toBe(true)
+    before = h.conn.sent.length
+    for (let i = 0; i < 5; i++) room.handle(g.conn.id, { type: 'buffering', value: false })
+    expect(h.conn.sent.length).toBe(before)
+  })
+
+  it('counts rapid buffering toggles as strikes and eventually disconnects', () => {
+    const { room, h, g } = loaded({ settings: { pauseOnBuffering: false } })
+    const before = h.conn.all('members').length
+    for (let i = 0; i < 40 && !g.conn.closed; i++) room.handle(g.conn.id, { type: 'buffering', value: i % 2 === 0 })
+    expect(g.conn.all('error').some((e) => e.code === 'rate_limited')).toBe(true)
+    expect(g.conn.closed?.code).toBe(4008)
+    // only the allowed toggles, the auto-mute and the eviction reach everyone else
+    expect(h.conn.all('members').length - before).toBeLessThanOrEqual(8)
+  })
+
+  it('ignores buffering:true for 1.5s after the server itself resumed playback', () => {
+    const { room, advance, h, g } = loaded()
+    ctl(room, h.conn.id, { action: 'play', position: 0 })
+    room.handle(g.conn.id, { type: 'buffering', value: true }) // server auto-pauses
+    room.handle(g.conn.id, { type: 'buffering', value: false }) // server resumes
+    const states = h.conn.all('state').length
+    advance(1_000)
+    room.handle(g.conn.id, { type: 'buffering', value: true }) // the brief stall that resuming causes
+    expect(room.engine.state.isPlaying).toBe(true)
+    expect(h.conn.all('state').length).toBe(states)
+    room.handle(g.conn.id, { type: 'buffering', value: false })
+    advance(500)
+    room.handle(g.conn.id, { type: 'buffering', value: true }) // a real stall later still pauses
+    expect(room.engine.state.isPlaying).toBe(false)
+  })
+
+  it('ignores buffering:true right after the buffering timeout resumed the room', () => {
+    const { room, advance, h, g } = loaded()
+    ctl(room, h.conn.id, { action: 'play', position: 0 })
+    room.handle(g.conn.id, { type: 'buffering', value: true })
+    advance(10_000); room.tick()
+    expect(room.engine.state.isPlaying).toBe(true)
+    room.handle(g.conn.id, { type: 'buffering', value: true })
+    expect(room.engine.state.isPlaying).toBe(true)
+  })
+
+  it('a user play is not a server-caused change: buffering right after it still pauses', () => {
+    const { room, h, g } = loaded()
+    ctl(room, h.conn.id, { action: 'play', position: 0 })
+    room.handle(g.conn.id, { type: 'buffering', value: true })
+    expect(room.engine.state.isPlaying).toBe(false)
+  })
+})
+
+describe('room password abuse (I3)', () => {
+  it('limits failed password attempts per IP and stops running the hash check', () => {
+    const ctx = makeRoom({ password: 'pw' })
+    for (let i = 0; i < 5; i++) {
+      expect(joinAs(ctx.room, guest(`g${i}`), `c${i}`, 'nope', 'ip-x').result).toEqual({ ok: false, code: 'bad_password' })
+    }
+    const calls = ctx.verifyCalls()
+    expect(joinAs(ctx.room, guest('g9'), 'c9', 'pw', 'ip-x').result).toEqual({ ok: false, code: 'rate_limited' })
+    expect(ctx.verifyCalls()).toBe(calls) // no scrypt while limited
+    expect(joinAs(ctx.room, guest('g8'), 'c8', 'pw', 'ip-y').result.ok).toBe(true) // other IPs unaffected
+    ctx.advance(60_000)
+    expect(joinAs(ctx.room, guest('g9'), 'c9b', 'pw', 'ip-x').result.ok).toBe(true)
+  })
+
+  it('skips the hash check for an identity that already verified in this room', () => {
+    const ctx = makeRoom({ password: 'pw' })
+    expect(joinAs(ctx.room, guest('g1'), 'c1', 'pw').result.ok).toBe(true)
+    ctx.room.leave('c1')
+    const calls = ctx.verifyCalls()
+    expect(joinAs(ctx.room, guest('g1'), 'c2').result.ok).toBe(true)
+    expect(ctx.verifyCalls()).toBe(calls)
+    expect(joinAs(ctx.room, guest('g2'), 'c3').result).toEqual({ ok: false, code: 'bad_password' })
+  })
+
+  it('a banned identity gets no shortcut, and destroy forgets verified identities', () => {
+    const ctx = makeRoom({ password: 'pw' })
+    joinAs(ctx.room, host())
+    joinAs(ctx.room, guest('g1'), 'c1', 'pw', 'ip-1')
+    ctx.room.handle('c-host-1', { type: 'mod', op: 'ban', target: 'g1' })
+    expect(joinAs(ctx.room, guest('g1'), 'c2', undefined, 'ip-2').result).toEqual({ ok: false, code: 'banned' })
+    joinAs(ctx.room, user('u2'), 'c3', 'pw')
+    ctx.room.destroy()
+    expect(joinAs(ctx.room, user('u2'), 'c4').result).toEqual({ ok: false, code: 'bad_password' })
+  })
+})

@@ -208,4 +208,19 @@ describe('gateway', () => {
     expect((await c.waitFor(ofType('welcome'))).role).toBe('guest')
     c.ws.close()
   })
+
+  it('closes a flooding connection with 4008 and keeps other clients unaffected', async () => {
+    const rec = await start()
+    const good = connect(port, rec.slug); await good.opened
+    good.send({ type: 'hello', token: await hostToken() })
+    await good.waitFor(ofType('welcome'))
+    const bad = connect(port, rec.slug); await bad.opened
+    bad.send({ type: 'hello', token: await guestToken('g1') })
+    await bad.waitFor(ofType('welcome'))
+    for (let i = 0; i < 300; i++) bad.send({ type: 'ping', t0: i })
+    expect(await bad.closed).toBe(4008)
+    good.send({ type: 'ping', t0: 42 })
+    expect((await good.waitFor((m) => m.type === 'pong' && m.t0 === 42)).t0).toBe(42)
+    good.ws.close()
+  })
 })

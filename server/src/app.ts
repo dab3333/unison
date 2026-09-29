@@ -3,12 +3,13 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { sanitizeNickname, sanitizeText, type PublicSettings, type RoomSettings } from '@unison/shared'
 import type { Auth, AuthIdentity } from './auth'
+import { clientIp } from './clientIp'
 import { hashPassword } from './password'
 import { hashIp } from './privacy'
 import { RateLimiter } from './rateLimiter'
 import type { RoomManager } from './roomManager'
 import { newSlug } from './slug'
-import type { RoomRecord, Stores } from './stores'
+import { SlugTakenError, type RoomRecord, type Stores } from './stores'
 
 export interface AppDeps {
   auth: Auth
@@ -46,7 +47,9 @@ const createBody = z.object({
 const reportBody = z.object({ reason: z.string().min(1).max(500) })
 
 export async function createApp(d: AppDeps) {
-  const app = Fastify({ trustProxy: d.trustProxy ?? false })
+  // Not Fastify's trustProxy: that makes req.ip the client-controlled left-most X-Forwarded-For entry.
+  // clientIp() is shared with the WebSocket gateway so REST and WS limits key on the same address.
+  const app = Fastify()
   await app.register(cors, {
     origin: d.clientOrigin,
     methods: ['GET', 'POST', 'DELETE'],
@@ -55,7 +58,13 @@ export async function createApp(d: AppDeps) {
 
   const guestLimiter = new RateLimiter(20, 60_000, d.now)
   const reportLimiter = new RateLimiter(5, 60_000, d.now)
-  const ipKey = (ip: string) => hashIp(ip, d.ipSecret, d.now())
+  const roomInfoLimiter = new RateLimiter(60, 60_000, d.now)
+  const pruner = setInterval(() => {
+    for (const l of [guestLimiter, reportLimiter, roomInfoLimiter]) l.prune()
+  }, 60_000)
+  pruner.unref()
+  app.addHook('onClose', async () => clearInterval(pruner))
+  const ipKey = (req: FastifyRequest) => hashIp(clientIp(req.raw, d.trustProxy ?? false), d.ipSecret, d.now())
   const makeSlug = d.makeSlug ?? newSlug
   const pub = (r: RoomRecord): PublicSettings => ({ ...r.settings, hasPassword: r.passwordHash !== null })
   const live = (slug: string) => d.manager.peek(slug)?.size ?? 0
@@ -77,7 +86,7 @@ export async function createApp(d: AppDeps) {
   app.get('/stats', async () => d.manager.stats())
 
   app.post('/guest', async (req, reply) => {
-    if (!guestLimiter.allow(ipKey(req.ip))) return reply.code(429).send({ error: 'rate_limited' })
+    if (!guestLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
     const nickname = sanitizeNickname((req.body as { nickname?: unknown } | null)?.nickname)
     if (!nickname) return reply.code(400).send({ error: 'bad_nickname' })
     const id = d.nextId()
@@ -85,6 +94,7 @@ export async function createApp(d: AppDeps) {
   })
 
   app.get('/rooms/:slug', async (req, reply) => {
+    if (!roomInfoLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
     const { slug } = req.params as { slug: string }
     const rec = await d.stores.rooms.getBySlug(slug)
     if (!rec || rec.closedAt !== null) return reply.code(404).send({ error: 'not_found' })
@@ -103,20 +113,25 @@ export async function createApp(d: AppDeps) {
     if ((await d.stores.rooms.countCreatedSince(me.id, d.now() - DAY_MS)) >= MAX_ROOMS_PER_DAY) {
       return reply.code(429).send({ error: 'daily_limit' })
     }
-    let slug = ''
-    for (let i = 0; i < 5 && !slug; i++) {
-      const candidate = makeSlug()
-      if (!(await d.stores.rooms.getBySlug(candidate))) slug = candidate
-    }
-    if (!slug) return reply.code(500).send({ error: 'slug_unavailable' })
-    const rec: RoomRecord = {
-      id: d.nextId(), slug, ownerId: me.id, ownerName: me.nickname, name,
+    const base = {
+      id: d.nextId(), ownerId: me.id, ownerName: me.nickname, name,
       settings: { ...DEFAULT_SETTINGS, ...parsed.data.settings },
       passwordHash: parsed.data.password ? hashPassword(parsed.data.password) : null,
       createdAt: d.now(), closedAt: null,
     }
-    await d.stores.rooms.create(rec)
-    return reply.code(201).send({ id: rec.id, slug: rec.slug })
+    for (let i = 0; i < 5; i++) {
+      const slug = makeSlug()
+      if (await d.stores.rooms.getBySlug(slug)) continue
+      const rec: RoomRecord = { ...base, slug }
+      try {
+        await d.stores.rooms.create(rec)
+      } catch (e) {
+        if (e instanceof SlugTakenError) continue // lost an insert race for this slug: draw another
+        throw e
+      }
+      return reply.code(201).send({ id: rec.id, slug: rec.slug })
+    }
+    return reply.code(500).send({ error: 'slug_unavailable' })
   })
 
   app.get('/rooms', async (req, reply) => {
@@ -139,7 +154,7 @@ export async function createApp(d: AppDeps) {
   })
 
   app.post('/rooms/:slug/report', async (req, reply) => {
-    if (!reportLimiter.allow(ipKey(req.ip))) return reply.code(429).send({ error: 'rate_limited' })
+    if (!reportLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
     const parsed = reportBody.safeParse(req.body)
     const reason = parsed.success ? sanitizeText(parsed.data.reason, 500) : ''
     if (!reason) return reply.code(400).send({ error: 'bad_request' })

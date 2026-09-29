@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { RoomSettings } from '@unison/shared'
-import type { RoomRecord, Stores } from './stores'
+import { SlugTakenError, type RoomRecord, type Stores } from './stores'
 
 interface Row {
   id: string
@@ -40,6 +40,7 @@ export function createSupabaseStores(url: string, serviceKey: string): Stores {
           settings: r.settings, password_hash: r.passwordHash, created_at: iso(r.createdAt),
           closed_at: r.closedAt === null ? null : iso(r.closedAt),
         })
+        if (error?.code === '23505') throw new SlugTakenError() // unique violation: the only unique user-chosen column is slug
         check(error)
       },
       async getBySlug(slug) {

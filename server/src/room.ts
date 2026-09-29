@@ -55,6 +55,8 @@ const HEARTBEAT_MS = 5_000
 const BUFFER_TIMEOUT_MS = 10_000
 const STRIKE_WINDOW_MS = 60_000
 const AUTO_MUTE_MS = 60_000
+/** Resuming or pausing makes players stall briefly; buffering:true reports this soon after are ignored. */
+const BUFFER_GRACE_MS = 1_500
 
 export function banKeys(identity: Identity, ipHash: string): string[] {
   return identity.isGuest ? [`guest:${identity.id}`, `ip:${ipHash}`] : [`user:${identity.id}`]
@@ -70,7 +72,15 @@ export class Room {
   private bans: Set<string>
   private settings: RoomSettings
   private controlLimiter: RateLimiter
+  /** Buffering flag changes per member; more than this counts as a strike. */
+  private bufferLimiter: RateLimiter
+  /** Failed password attempts per IP hash; over the limit we answer without running scrypt. */
+  private pwFailures: RateLimiter
+  /** Identities that already gave the right password in this room (skip scrypt on rejoin). */
+  private verified = new Set<string>()
   private autoPausedAt: number | null = null
+  /** When the server itself last paused or resumed playback (buffering auto-pause/resume or timeout). */
+  private serverChangedAt: number | null = null
   private lastHeartbeat: number
 
   constructor(
@@ -86,6 +96,8 @@ export class Room {
     this.engine = new SyncEngine(deps.now)
     this.chat = new ChatService(deps.now, deps.nextId)
     this.controlLimiter = new RateLimiter(10, 10_000, deps.now)
+    this.bufferLimiter = new RateLimiter(6, 10_000, deps.now)
+    this.pwFailures = new RateLimiter(5, 60_000, deps.now)
     this.emptySince = deps.now()
     this.lastHeartbeat = deps.now()
   }
@@ -119,7 +131,14 @@ export class Room {
     const isHost = identity.id === this.hostId
     if (banKeys(identity, conn.ipHash).some((k) => this.bans.has(k))) return { ok: false, code: 'banned' }
     if (identity.isGuest && !this.settings.allowGuests) return { ok: false, code: 'forbidden' }
-    if (!isHost && this.deps.hasPassword && !this.deps.verifyPassword(password)) return { ok: false, code: 'bad_password' }
+    if (!isHost && this.deps.hasPassword && !this.verified.has(identity.id)) {
+      if (!this.pwFailures.wouldAllow(conn.ipHash)) return { ok: false, code: 'rate_limited' }
+      if (!this.deps.verifyPassword(password)) {
+        this.pwFailures.allow(conn.ipHash)
+        return { ok: false, code: 'bad_password' }
+      }
+      this.verified.add(identity.id)
+    }
     const existing = this.entries.get(identity.id)
     if (!existing && !isHost && this.entries.size >= this.settings.maxViewers) return { ok: false, code: 'room_full' }
     if (existing) existing.conn.close(4001, 'replaced by a newer connection')
@@ -151,8 +170,10 @@ export class Room {
     this.entries.delete(id)
     this.chat.forget(id)
     this.controlLimiter.reset(id)
+    this.bufferLimiter.reset(id)
     if (this.entries.size === 0) this.emptySince = this.deps.now()
     this.reevaluateBuffering()
+    this.broadcastMembers()
   }
 
   handle(connId: string, msg: ClientMessage): void {
@@ -168,8 +189,7 @@ export class Room {
       case 'chat':
         return this.onChat(entry, msg.text)
       case 'buffering':
-        entry.buffering = msg.value
-        return this.reevaluateBuffering()
+        return this.onBuffering(entry, msg.value)
       case 'mod':
         return this.onMod(entry, msg)
       case 'settings':
@@ -182,6 +202,7 @@ export class Room {
     const t = this.deps.now()
     if (this.autoPausedAt !== null && t - this.autoPausedAt >= BUFFER_TIMEOUT_MS) {
       this.autoPausedAt = null
+      this.serverChangedAt = t
       for (const e of this.entries.values()) e.buffering = false
       this.engine.setPlaying(true)
       this.broadcastState()
@@ -191,6 +212,7 @@ export class Room {
       if (this.entries.has(id) || p.muted || p.mutedUntil > t) continue
       if (p.strikes.every((s) => t - s >= STRIKE_WINDOW_MS)) this.penalties.delete(id)
     }
+    this.pwFailures.prune()
     if (t - this.lastHeartbeat >= HEARTBEAT_MS) {
       this.lastHeartbeat = t
       this.broadcast({ type: 'heartbeat', state: this.engine.state, serverTime: t })
@@ -200,6 +222,7 @@ export class Room {
   destroy(): void {
     for (const e of this.entries.values()) e.conn.close(4005, 'room closed')
     this.entries.clear()
+    this.verified.clear()
   }
 
   private onControl(entry: Entry, msg: Extract<ClientMessage, { type: 'control' }>): void {
@@ -249,6 +272,7 @@ export class Room {
           this.bans.add(key)
           this.deps.persist.ban(key)
         }
+        this.verified.delete(target.identity.id)
         return this.evict(target, 4004, 'banned')
       case 'mute':
         target.pen.muted = true
@@ -283,20 +307,34 @@ export class Room {
     this.leave(entry.conn.id)
   }
 
-  private reevaluateBuffering(): void {
-    if (this.settings.pauseOnBuffering) {
-      const holding = [...this.entries.values()].filter((e) => e.buffering).map((e) => e.identity.id)
-      if (holding.length > 0 && this.engine.state.isPlaying) {
-        this.engine.setPlaying(false)
-        this.autoPausedAt = this.deps.now()
-        this.broadcastState(holding)
-      } else if (holding.length === 0 && this.autoPausedAt !== null) {
-        this.autoPausedAt = null
-        this.engine.setPlaying(true)
-        this.broadcastState()
-      }
+  private onBuffering(entry: Entry, value: boolean): void {
+    if (entry.buffering === value) return // nothing changed: no broadcast
+    const t = this.deps.now()
+    if (value && this.serverChangedAt !== null && t - this.serverChangedAt < BUFFER_GRACE_MS) return
+    if (!this.bufferLimiter.allow(entry.identity.id)) {
+      this.strike(entry)
+      if (this.entries.get(entry.identity.id) !== entry) return // the strike disconnected them
+      if (value) return // clearing a flag is always safe; setting one is what pauses everyone
     }
+    entry.buffering = value
+    this.reevaluateBuffering()
     this.broadcastMembers()
+  }
+
+  /** Pauses or resumes the room for buffering. Callers broadcast members. */
+  private reevaluateBuffering(): void {
+    if (!this.settings.pauseOnBuffering) return
+    const holding = [...this.entries.values()].filter((e) => e.buffering).map((e) => e.identity.id)
+    if (holding.length > 0 && this.engine.state.isPlaying) {
+      this.engine.setPlaying(false)
+      this.autoPausedAt = this.serverChangedAt = this.deps.now()
+      this.broadcastState(holding)
+    } else if (holding.length === 0 && this.autoPausedAt !== null) {
+      this.autoPausedAt = null
+      this.serverChangedAt = this.deps.now()
+      this.engine.setPlaying(true)
+      this.broadcastState()
+    }
   }
 
   private strike(entry: Entry): void {

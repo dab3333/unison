@@ -2,7 +2,9 @@ import type { IncomingMessage, Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { clientMessageSchema, type ErrorCode, type ServerMessage } from '@unison/shared'
 import type { Auth } from './auth'
+import { clientIp } from './clientIp'
 import { hashIp } from './privacy'
+import { TokenBucket } from './rateLimiter'
 import type { Conn, Room } from './room'
 import type { RoomManager } from './roomManager'
 
@@ -18,16 +20,6 @@ export interface GatewayDeps {
   helloTimeoutMs?: number
 }
 
-export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
-    const fly = req.headers['fly-client-ip']
-    if (typeof fly === 'string') return fly
-    const xff = req.headers['x-forwarded-for']
-    if (typeof xff === 'string') return xff.split(',')[0]!.trim()
-  }
-  return req.socket.remoteAddress ?? 'unknown'
-}
-
 const send = (ws: WebSocket, m: ServerMessage) => {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m))
 }
@@ -35,6 +27,10 @@ const logFault = (e: unknown) => {
   const err = e instanceof Error ? e : new Error('non-error thrown')
   console.error(`gateway: handler fault (${err.name}: ${err.message})`)
 }
+/** Per-connection message budget: plenty for a real client (pings, chat, controls), not enough to flood the room. */
+const MSG_PER_SEC = 20
+const MSG_BURST = 40
+
 const errorMsg = (code: ErrorCode, message: string = code): ServerMessage => ({ type: 'error', code, message })
 
 export function attachGateway(server: Server, d: GatewayDeps): { close(): void } {
@@ -68,11 +64,14 @@ export function attachGateway(server: Server, d: GatewayDeps): { close(): void }
     }
     let room: Room | null = null
     let joining = false
+    const bucket = new TokenBucket(MSG_PER_SEC, MSG_BURST, d.now)
     const helloTimer = setTimeout(() => {
       if (!room) ws.close(4000, 'hello timeout')
     }, d.helloTimeoutMs ?? 5000)
 
     ws.on('message', async (raw) => {
+      if (ws.readyState !== ws.OPEN) return // already closing (e.g. over the limit): drop what is still queued
+      if (!bucket.take()) return void ws.close(4008, 'rate limit exceeded')
       let json: unknown
       try {
         json = JSON.parse(raw.toString())

@@ -12,6 +12,14 @@ export interface RoomRecord {
   closedAt: number | null
 }
 
+/** Thrown by RoomStore.create when the slug is already used (Postgres unique violation 23505). */
+export class SlugTakenError extends Error {
+  constructor() {
+    super('slug already taken')
+    this.name = 'SlugTakenError'
+  }
+}
+
 export interface RoomStore {
   create(r: RoomRecord): Promise<void>
   getBySlug(slug: string): Promise<RoomRecord | null>

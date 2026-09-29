@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import type { RoomRecord, Stores } from '../src/stores'
+import { SlugTakenError, type RoomRecord, type Stores } from '../src/stores'
 
 const settings = { controlMode: 'host', allowGuests: true, maxViewers: 15, chatEnabled: true, pauseOnBuffering: true } as const
 
@@ -32,6 +32,10 @@ export function runStoreContract(name: string, make: () => Promise<Stores> | Sto
       expect(await s.rooms.getBySlug(r.slug)).toEqual(r)
       expect(await s.rooms.getById(r.id)).toEqual(r)
       expect(await s.rooms.getBySlug('nope')).toBeNull()
+    })
+    it('refuses a second room with the same slug with SlugTakenError', async () => {
+      const a = record(); await s.rooms.create(a)
+      await expect(s.rooms.create(record({ slug: a.slug }))).rejects.toBeInstanceOf(SlugTakenError)
     })
     it('lists only open rooms for an owner and closes rooms', async () => {
       const a = record(); const b = record()
