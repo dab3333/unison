@@ -35,6 +35,17 @@ export class RoomSocket {
 
   connect(): void {
     this.stopped = false
+    // Tear down any existing socket and pending timer before opening a new one
+    if (this.ws) {
+      this.ws.onopen = null
+      this.ws.onmessage = null
+      this.ws.onclose = null
+      this.ws.close()
+    }
+    if (this.timer !== null) {
+      (this.o.clearTimer ?? ((h) => clearTimeout(h as number)))(this.timer)
+      this.timer = null
+    }
     this.open()
   }
 
@@ -46,20 +57,30 @@ export class RoomSocket {
     this.stopped = true
     if (this.timer !== null) (this.o.clearTimer ?? ((h) => clearTimeout(h as number)))(this.timer)
     this.ws?.close()
+    this.o.onStatus('closed')
   }
 
   private open(): void {
+    if (this.stopped) return
     this.o.onStatus(this.attempt === 0 ? 'connecting' : 'reconnecting')
     const ws = (this.o.create ?? ((u) => new WebSocket(u) as unknown as WSLike))(this.o.url)
     this.ws = ws
     ws.onopen = async () => {
       const hello = await this.o.getHello()
       if (!hello) {
+        // Only emit closed status if not already stopped by intentional close()
+        const wasStopped = this.stopped
         this.stopped = true
-        ws.close()
-        this.o.onStatus('closed', { code: 4002 })
+        if (this.timer !== null) {
+          (this.o.clearTimer ?? ((h) => clearTimeout(h as number)))(this.timer)
+          this.timer = null
+        }
+        if (this.ws === ws) ws.close()
+        if (!wasStopped) this.o.onStatus('closed', { code: 4002 })
         return
       }
+      // Guard against stopped or socket change before sending hello
+      if (this.stopped || this.ws !== ws) return
       ws.send(JSON.stringify(hello))
     }
     ws.onmessage = (e) => {
@@ -76,6 +97,7 @@ export class RoomSocket {
       this.o.onMessage(m)
     }
     ws.onclose = (e) => {
+      if (this.ws !== ws) return
       this.ws = null
       if (this.stopped) return
       if (FATAL.has(e.code)) {

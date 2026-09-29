@@ -18,14 +18,26 @@ function make(getHello: () => Promise<any> = async () => ({ type: 'hello', token
   FakeWS.all = []
   const timers: { fn: () => void; ms: number }[] = []
   const statuses: Array<[string, number | undefined]> = []
+  const timerHandles = new Map<number, { fn: () => void; ms: number }>()
   const sock = new RoomSocket({
     url: 'ws://x/ws?room=r',
     getHello,
     onMessage: () => {},
     onStatus: (s, i) => statuses.push([s, i?.code]),
     create: (u) => new FakeWS(u),
-    setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length },
-    clearTimer: () => {},
+    setTimer: (fn, ms) => {
+      const handle = timers.length + 1
+      const timer = { fn, ms }
+      timers.push(timer)
+      timerHandles.set(handle, timer)
+      return handle
+    },
+    clearTimer: (h) => {
+      const timer = timerHandles.get(h as number)
+      if (timer) {
+        timers.splice(timers.indexOf(timer), 1)
+      }
+    },
     random: () => 1,
   })
   return { sock, timers, statuses }
@@ -98,5 +110,112 @@ describe('RoomSocket', () => {
     ws.readyState = 3
     sock.send({ type: 'ping', t0: 2 })
     expect(ws.sent).toHaveLength(1)
+  })
+
+  it('a. null hello after socket close: no reconnect timer, status ends closed', async () => {
+    let resolveHello: ((v: any) => void) | null = null
+    const { sock, timers, statuses } = make(
+      async () => new Promise(resolve => { resolveHello = resolve })
+    )
+    sock.connect()
+    const ws = FakeWS.all[0]!
+    const openPromise = ws.onopen!()
+
+    // Socket closes while getHello is pending
+    ws.onclose!({ code: 1006 })
+
+    // Now getHello resolves null
+    resolveHello!(null)
+    await openPromise
+
+    // No reconnect timer should be scheduled
+    expect(timers).toHaveLength(0)
+    expect(statuses.at(-1)).toEqual(['closed', 4002])
+  })
+
+  it('b. close() during getHello await: no send, no extra closed status after', async () => {
+    let resolveHello: ((v: any) => void) | null = null
+    const { sock, timers, statuses } = make(
+      async () => new Promise(resolve => { resolveHello = resolve })
+    )
+    sock.connect()
+    const ws = FakeWS.all[0]!
+    const openPromise = ws.onopen!()
+
+    // Give onopen time to await getHello
+    await new Promise(r => setTimeout(r, 10))
+
+    sock.close()
+    ws.onclose!({ code: 1000 })
+
+    // Resolve hello after close
+    resolveHello!({ type: 'hello', token: 't' })
+    await openPromise
+
+    expect(ws.sent).toHaveLength(0)
+    // Only one closed status from the explicit close, not from hello resolution
+    expect(statuses).toEqual([['connecting', undefined], ['closed', undefined]])
+  })
+
+  it('c. close() then connect(): late onclose from old socket does not null new socket', async () => {
+    const { sock, timers, statuses } = make()
+    sock.connect()
+    const ws1 = FakeWS.all[0]!
+    const ws1Onclose = ws1.onclose!  // Save handler before it gets detached
+
+    sock.close()
+    sock.connect()
+    const ws2 = FakeWS.all[1]!
+
+    // Simulate late onclose from old socket
+    ws1Onclose({ code: 1006 })
+
+    // New socket should still be there and work
+    await ws2.onopen!()
+    ws2.readyState = 1
+    sock.send({ type: 'ping', t0: 1 })
+    expect(ws2.sent.filter(s => s.includes('ping'))).toHaveLength(1)
+  })
+
+  it('d. connect() called twice: first socket is closed, only second is live', async () => {
+    const { sock, timers } = make()
+    sock.connect()
+    const ws1 = FakeWS.all[0]!
+    sock.connect()
+    const ws2 = FakeWS.all[1]!
+
+    expect(ws1.closedByUs).toBe(true)
+    await ws2.onopen!()
+    ws2.readyState = 1
+    sock.send({ type: 'ping', t0: 1 })
+    expect(ws2.sent.filter(s => s.includes('ping'))).toHaveLength(1)
+    expect(ws1.sent.filter(s => s.includes('ping'))).toHaveLength(0)
+  })
+
+  it('e. 4001 (replaced) is NOT fatal: reconnects with backoff', () => {
+    const { sock, timers } = make()
+    sock.connect()
+    FakeWS.all[0]!.onclose!({ code: 4001 })
+    expect(timers).toHaveLength(1)
+    expect(timers[0]!.ms).toBe(500)
+  })
+
+  it('f. getHello invoked again on each reconnect', async () => {
+    let callCount = 0
+    const { sock, timers } = make(async () => {
+      callCount++
+      return { type: 'hello', token: 't' }
+    })
+
+    sock.connect()
+    const ws1 = FakeWS.all[0]!
+    await ws1.onopen!()
+    expect(callCount).toBe(1)
+
+    ws1.onclose!({ code: 1006 })
+    timers[0]!.fn()
+    const ws2 = FakeWS.all[1]!
+    await ws2.onopen!()
+    expect(callCount).toBe(2)
   })
 })
