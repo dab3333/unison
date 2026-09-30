@@ -7,6 +7,7 @@ export interface YTPlayerLike {
   getCurrentTime(): number
   getDuration(): number
   setPlaybackRate(rate: number): void
+  getAvailablePlaybackRates(): number[]
   getPlayerState(): number
   destroy(): void
 }
@@ -34,6 +35,8 @@ export class YouTubeAdapter implements Player {
 
   onReady(): void { this.emit('ready') }
   onAutoplayBlocked(): void { this.emit('blocked') }
+  /** A player error after creation (e.g. the video was removed or made private mid-session). */
+  onPlayerError(): void { this.emit('error') }
 
   onStateChange(state: number): void {
     if (state === PLAYING) {
@@ -72,6 +75,8 @@ export class YouTubeAdapter implements Player {
   getTime(): number { return this.yt.getCurrentTime() }
   getDuration(): number { return this.yt.getDuration() }
   setRate(rate: number): void { this.yt.setPlaybackRate(rate) }
+  /** The IFrame API silently ignores rates it does not list (typically only 0.25 steps, so no 0.95/1.05 nudges). */
+  supportsRate(rate: number): boolean { return rate === 1 || this.yt.getAvailablePlaybackRates().includes(rate) }
   isPlaying(): boolean { return this.yt.getPlayerState() === PLAYING }
   on(event: PlayerEvent, cb: Handler): void { (this.handlers[event] ??= []).push(cb) }
   destroy(): void {
@@ -185,7 +190,10 @@ export async function createYouTubeAdapter(
         },
         onStateChange: (e) => adapter?.onStateChange(e.data),
         onAutoplayBlocked: () => adapter?.onAutoplayBlocked(),
-        onError: (e) => fail(new Error(`YouTube player error ${e.data}`)),
+        onError: (e) => {
+          if (settled) adapter?.onPlayerError()
+          else fail(new Error(`YouTube player error ${e.data}`))
+        },
       },
     })
     adapter = new YouTubeAdapter(yt)

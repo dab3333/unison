@@ -11,7 +11,7 @@ import { api } from '../lib/api'
 import { fmt } from '../lib/format'
 import { clearGuest, getIdentity, loadGuest } from '../lib/identity'
 import { fileForSource, pickedFor, type PickedFile } from '../room/localFile'
-import { availableOps, canModerateChat, type ModOp } from '../room/permissions'
+import { availableOps, canControlPlayback, canModerateChat, type ModOp } from '../room/permissions'
 import { closedView } from '../room/roomErrors'
 import { useRoom } from '../room/useRoom'
 
@@ -124,7 +124,7 @@ function RoomView({ slug }: { slug: string }) {
   }
 
   const role = room.me?.role
-  const canControl = role === 'host' || room.settings?.controlMode === 'everyone'
+  const canControl = canControlPlayback(role, room.settings?.controlMode)
   const chatEnabled = room.settings?.chatEnabled !== false || role === 'host'
 
   const OP_LABEL: Record<ModOp, string> = { kick: 'Kick', mute: 'Mute', unmute: 'Unmute', ban: 'Ban', promote: 'Make mod', demote: 'Remove mod' }

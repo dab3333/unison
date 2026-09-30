@@ -11,6 +11,8 @@ export interface PlayerSim {
   ready(): void
   blockNextPlay(): void
   setDuration(n: number): void
+  /** The media fails to load or play (network error, unsupported file, video removed). */
+  fail(): void
 }
 const tick = () => new Promise<void>((r) => setTimeout(r, 0))
 
@@ -61,6 +63,12 @@ export function runPlayerContract(name: string, make: () => { player: Player; si
       const { player, sim } = make()
       const cb = vi.fn(); player.on('blocked', cb)
       sim.blockNextPlay(); player.play(); await tick()
+      expect(cb).toHaveBeenCalledTimes(1)
+    })
+    it('emits error when the media fails', async () => {
+      const { player, sim } = make()
+      const cb = vi.fn(); player.on('error', cb)
+      sim.fail(); await tick()
       expect(cb).toHaveBeenCalledTimes(1)
     })
     it('stops emitting after destroy()', async () => {

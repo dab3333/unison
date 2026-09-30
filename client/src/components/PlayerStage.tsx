@@ -47,8 +47,14 @@ export function PlayerStage(p: Props) {
     let objectUrl: string | null = null
     let hls: { destroy(): void } | null = null
     const video = videoRef.current
+    const failText =
+      source.type === 'youtube'
+        ? 'Could not load this YouTube video (blocked, removed, or embedding is disabled). Ask the host to pick another source.'
+        : 'Could not load this video. Ask the host to pick another source.'
+    const fail = () => { if (!cancelled) setLoadError(failText) }
     const attach = (pl: Player) => {
       if (cancelled) return pl.destroy()
+      pl.on('error', fail)
       player = pl
       setActive(pl)
       sync.attachPlayer(pl)
@@ -77,6 +83,7 @@ export function PlayerStage(p: Props) {
           if (cancelled) return
           if (Hls.isSupported()) {
             const h = new Hls()
+            h.on(Hls.Events.ERROR, (_e, data) => { if (data.fatal) fail() })
             h.loadSource(source.url!)
             h.attachMedia(video)
             hls = h
@@ -86,12 +93,7 @@ export function PlayerStage(p: Props) {
           attach(new HtmlVideoAdapter(video))
         }
       } catch {
-        if (cancelled) return
-        setLoadError(
-          source.type === 'youtube'
-            ? 'Could not load this YouTube video (blocked, removed, or embedding is disabled). Ask the host to pick another source.'
-            : 'Could not load this video. Ask the host to pick another source.',
-        )
+        fail()
       }
     })()
     return () => {

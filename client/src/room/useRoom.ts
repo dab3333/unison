@@ -4,6 +4,7 @@ import { WS_URL } from '../lib/config'
 import { getIdentity } from '../lib/identity'
 import { RoomSocket, type SocketStatus } from '../net/roomSocket'
 import { SyncClient } from '../sync/syncClient'
+import { canControlPlayback } from './permissions'
 import { errorText, type SentKind } from './roomErrors'
 
 export interface RoomView {
@@ -45,6 +46,10 @@ export function useRoom(slug: string): RoomView {
   const syncRef = useRef<SyncClient | null>(null)
   const lastErrorRef = useRef<ErrorCode | null>(null)
   const lastSentRef = useRef<SentKind>(null)
+  // Updated straight from server messages (not on render) so the SyncClient always sees the current role and mode.
+  const roleRef = useRef<Role | undefined>(undefined)
+  const meIdRef = useRef<string | null>(null)
+  const modeRef = useRef<PublicSettings['controlMode'] | undefined>(undefined)
   // Every outgoing message goes through here, so an error reply can be matched to the kind of request that caused it.
   const out = useCallback((m: ClientMessage) => {
     if (m.type === 'control' || m.type === 'chat' || m.type === 'mod' || m.type === 'settings') lastSentRef.current = m.type
@@ -59,6 +64,7 @@ export function useRoom(slug: string): RoomView {
       onBlocked: () => setBlocked(true),
       onMismatch: setMismatch,
       onState: setState,
+      canControl: () => canControlPlayback(roleRef.current, modeRef.current),
     })
   }
   const sync = syncRef.current
@@ -94,6 +100,9 @@ export function useRoom(slug: string): RoomView {
         switch (m.type) {
           case 'welcome':
             lastErrorRef.current = null
+            roleRef.current = m.role
+            meIdRef.current = m.you
+            modeRef.current = m.settings.controlMode
             setMe({ id: m.you, role: m.role })
             setSettings(m.settings)
             setMembers(m.members)
@@ -108,14 +117,18 @@ export function useRoom(slug: string): RoomView {
           case 'chatRemoved':
             setChat((c) => c.filter((x) => x.id !== m.id))
             break
-          case 'members':
+          case 'members': {
+            const self = m.members.find((x) => x.id === meIdRef.current)
+            if (self) roleRef.current = self.role
             setMembers(m.members)
             setMe((prev) => {
               const mine = prev && m.members.find((x) => x.id === prev.id)
               return prev && mine && mine.role !== prev.role ? { ...prev, role: mine.role } : prev
             })
             break
+          }
           case 'settings':
+            modeRef.current = m.settings.controlMode
             setSettings(m.settings)
             break
           case 'error': {

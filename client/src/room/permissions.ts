@@ -17,3 +17,8 @@ export function availableOps(actor: Role, target: { role: Role; muted: boolean }
 export function canModerateChat(role: Role | undefined): boolean {
   return role === 'host' || role === 'moderator'
 }
+
+/** Mirrors the server: the host always controls playback; everyone else only in 'everyone' mode. */
+export function canControlPlayback(role: Role | undefined, controlMode: 'host' | 'everyone' | undefined): boolean {
+  return role === 'host' || (role !== undefined && controlMode === 'everyone')
+}

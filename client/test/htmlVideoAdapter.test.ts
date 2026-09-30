@@ -43,6 +43,7 @@ runPlayerContract('HtmlVideoAdapter', () => {
       ready: () => void video.dispatchEvent(new Event('canplay')),
       blockNextPlay: () => { video.blockNext = true },
       setDuration: (n) => { video.duration = n },
+      fail: () => void video.dispatchEvent(new Event('error')),
     },
   }
 })

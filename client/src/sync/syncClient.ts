@@ -12,6 +12,10 @@ import type { Player } from '../player/Player'
 
 /** Player events fired within this window after we drive the player ourselves are echoes, not user actions. */
 const IGNORE_MS = 400
+/** A stall must last this long before we tell the room (which pauses everyone). Short stalls are normal. */
+const BUFFER_REPORT_MS = 800
+/** Without rate nudging (e.g. YouTube only offers a few rates), seek once drift reaches this. */
+const NO_NUDGE_SEEK_S = 0.5
 
 export interface SyncDeps {
   send(m: ClientMessage): void
@@ -20,6 +24,10 @@ export interface SyncDeps {
   onBlocked(): void
   onMismatch(i: { expected: number; actual: number }): void
   onState?(s: RoomState): void
+  /** Whether this client may control playback right now (read on every event, so it must be current). */
+  canControl(): boolean
+  setTimer?(fn: () => void, ms: number): unknown
+  clearTimer?(h: unknown): void
 }
 
 export class SyncClient {
@@ -30,6 +38,8 @@ export class SyncClient {
   private ignoreUntil = 0
   private samples: ClockSample[] = []
   private sourceKey = 'null'
+  private bufferTimer: unknown = null
+  private bufferSent = false
 
   constructor(private d: SyncDeps) {}
 
@@ -71,7 +81,7 @@ export class SyncClient {
     p.on('play', () => live() && this.onLocal('play'))
     p.on('pause', () => live() && this.onLocal('pause'))
     p.on('seek', () => live() && this.onLocal('seek'))
-    p.on('buffering', (v) => live() && this.d.send({ type: 'buffering', value: !!v }))
+    p.on('buffering', (v) => live() && this.onBuffering(!!v))
     p.on('blocked', () => live() && this.d.onBlocked())
     this.reconcile()
   }
@@ -96,6 +106,13 @@ export class SyncClient {
       } else if (act.kind === 'seek') {
         this.quiet()
         p.seek(act.to)
+        p.setRate(1)
+      } else if (act.kind === 'rate' && p.supportsRate && !p.supportsRate(act.rate)) {
+        // The player cannot nudge: leave small drift alone, seek once it is noticeable.
+        if (Math.abs(p.getTime() - expected) >= NO_NUDGE_SEEK_S) {
+          this.quiet()
+          p.seek(expected)
+        }
         p.setRate(1)
       } else {
         p.setRate(act.kind === 'rate' ? act.rate : 1)
@@ -134,8 +151,32 @@ export class SyncClient {
     this.reconcile()
   }
 
+  private onBuffering(buffering: boolean): void {
+    const clear = this.d.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>))
+    if (buffering) {
+      if (this.bufferSent || this.bufferTimer !== null) return
+      this.bufferTimer = (this.d.setTimer ?? ((fn, ms) => setTimeout(fn, ms)))(() => {
+        this.bufferTimer = null
+        this.bufferSent = true
+        this.d.send({ type: 'buffering', value: true })
+      }, BUFFER_REPORT_MS)
+      return
+    }
+    if (this.bufferTimer !== null) {
+      clear(this.bufferTimer)
+      this.bufferTimer = null
+    }
+    if (this.bufferSent) {
+      this.bufferSent = false
+      this.d.send({ type: 'buffering', value: false })
+    }
+  }
+
   private onLocal(kind: 'play' | 'pause' | 'seek'): void {
     if (this.d.now() < this.ignoreUntil || !this.player) return
+    // Viewers who cannot control never send control: late YouTube events, drift seeks or iOS pausing on screen
+    // lock would otherwise show a permission error (host mode) or pause everyone (everyone mode). Snap back instead.
+    if (!this.d.canControl()) return this.reconcile()
     this.d.send({
       type: 'control',
       version: this.state?.version ?? 0,

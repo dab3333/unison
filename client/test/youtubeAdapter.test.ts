@@ -17,6 +17,8 @@ class FakeYT implements YTPlayerLike {
   getCurrentTime() { return this.time }
   getDuration() { return this.dur }
   setPlaybackRate() {}
+  rates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+  getAvailablePlaybackRates() { return this.rates }
   getPlayerState() { return this.state }
   destroy() {}
 }
@@ -34,6 +36,7 @@ function build(now: () => number = Date.now) {
     ready: () => player.onReady(),
     blockNextPlay: () => { yt.blockNext = true },
     setDuration: (n) => { yt.dur = n },
+    fail: () => player.onPlayerError(),
   }
   return { yt, player, sim }
 }
@@ -41,6 +44,17 @@ function build(now: () => number = Date.now) {
 runPlayerContract('YouTubeAdapter', () => build())
 
 describe('YouTubeAdapter specifics', () => {
+  it('only claims the playback rates YouTube actually offers', () => {
+    const { yt, player } = build()
+    expect(player.supportsRate(1)).toBe(true)
+    expect(player.supportsRate(1.25)).toBe(true)
+    expect(player.supportsRate(1.05)).toBe(false)
+    expect(player.supportsRate(0.95)).toBe(false)
+    yt.rates = [] // before the video loads the list can be empty; normal speed always works
+    expect(player.supportsRate(1)).toBe(true)
+    expect(player.supportsRate(1.05)).toBe(false)
+  })
+
   it('does not re-emit play when buffering ends during playback', () => {
     const { player, sim } = build()
     const play = vi.fn(); player.on('play', play)

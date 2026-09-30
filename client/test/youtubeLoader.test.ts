@@ -64,6 +64,7 @@ describe('createYouTubeAdapter failure paths', () => {
       getCurrentTime() { return 0 }
       getDuration() { return 0 }
       setPlaybackRate() {}
+      getAvailablePlaybackRates() { return [1] }
       getPlayerState() { return -1 }
       destroy = destroy
     }
@@ -115,6 +116,19 @@ describe('createYouTubeAdapter failure paths', () => {
     events().onReady()
     await expect(p).resolves.toBeInstanceOf(YouTubeAdapter)
   })
+
+  it('reports a player error after it became ready as an error event', async () => {
+    vi.useFakeTimers()
+    const { destroy, loadApi, events } = setup()
+    const p = createYouTubeAdapter(el, 'x', true, { loadApi })
+    await vi.advanceTimersByTimeAsync(0)
+    events().onReady()
+    const adapter = await p
+    const cb = vi.fn(); adapter.on('error', cb)
+    events().onError({ data: 150 })
+    expect(cb).toHaveBeenCalledTimes(1)
+    expect(destroy).not.toHaveBeenCalled()
+  })
 })
 
 describe('YouTubeAdapter.destroy', () => {
@@ -124,7 +138,7 @@ describe('YouTubeAdapter.destroy', () => {
     const yt: YTPlayerLike = {
       playVideo() {}, pauseVideo() {}, seekTo() {},
       getCurrentTime: () => 0, getDuration: () => 0,
-      setPlaybackRate() {}, getPlayerState: () => -1, destroy,
+      setPlaybackRate() {}, getAvailablePlaybackRates: () => [1], getPlayerState: () => -1, destroy,
     }
     const a = new YouTubeAdapter(yt)
     expect(vi.getTimerCount()).toBe(1)
