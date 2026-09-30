@@ -237,6 +237,7 @@ function RoomView({ slug }: { slug: string }) {
         <Chat
           messages={room.chat}
           enabled={chatEnabled}
+          muted={room.members.find((m) => m.id === room.me?.id)?.muted ?? false}
           canModerate={canModerateChat(role)}
           open={chatOpen}
           onSend={(text) => room.send({ type: 'chat', text })}

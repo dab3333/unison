@@ -14,5 +14,7 @@ COPY shared shared
 COPY server/src server/src
 COPY server/tsconfig.json server/
 
+# Run as the image's unprivileged user. The app files stay root-owned and read-only to it; tsx caches in /tmp.
+USER node
 EXPOSE 8080
 CMD ["npx", "tsx", "server/src/index.ts"]

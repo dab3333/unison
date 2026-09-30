@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { availableOps, canModerateChat } from '../src/room/permissions'
+import { availableOps, canModerateChat, chatComposer } from '../src/room/permissions'
 
 describe('availableOps', () => {
   it('lets the host mute, kick and ban guests but not promote them', () => {
@@ -30,5 +30,15 @@ describe('canModerateChat', () => {
     expect(canModerateChat('moderator')).toBe(true)
     expect(canModerateChat('member')).toBe(false)
     expect(canModerateChat(undefined)).toBe(false)
+  })
+})
+
+describe('chatComposer (M8)', () => {
+  it('disables the input with a muted placeholder for a muted member', () => {
+    expect(chatComposer(true, true)).toEqual({ disabled: true, placeholder: 'You are muted' })
+  })
+  it('says chat is off when disabled, and invites a message otherwise', () => {
+    expect(chatComposer(false, false)).toEqual({ disabled: true, placeholder: 'Chat is off' })
+    expect(chatComposer(true, false)).toEqual({ disabled: false, placeholder: 'Say something' })
   })
 })

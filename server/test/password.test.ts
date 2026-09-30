@@ -19,4 +19,14 @@ describe('password', () => {
   it('rejects a corrupt stored value', () => {
     expect(checkPassword('x', 'garbage')).toBe(false)
   })
+  it('rejects stored hashes that are not a 32-byte hex hash with a hex salt (M2)', () => {
+    const good = hashPassword('x')
+    const [salt, hash] = good.split(':') as [string, string]
+    expect(checkPassword('x', 'zz:zz')).toBe(false) // non-hex decodes to an empty buffer
+    expect(checkPassword('x', `${salt}:`)).toBe(false)
+    expect(checkPassword('x', `${salt}:${hash.slice(0, 32)}`)).toBe(false) // 16 bytes, not 32
+    expect(checkPassword('x', `${salt}:${'g'.repeat(64)}`)).toBe(false)
+    expect(checkPassword('x', `zz:${hash}`)).toBe(false)
+    expect(checkPassword('x', good)).toBe(true)
+  })
 })

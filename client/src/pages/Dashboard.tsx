@@ -17,6 +17,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const t = await getAccessToken()
@@ -26,7 +28,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (loading) return
     if (!user) nav('/signin', { replace: true })
-    else refresh().catch(() => setError('Could not load your rooms.'))
+    else refresh().catch(() => setListError('Could not load your rooms.'))
   }, [loading, user, nav, refresh])
 
   async function create(e: FormEvent) {
@@ -49,15 +51,26 @@ export default function Dashboard() {
     }
   }
   async function close(id: string) {
-    const t = await getAccessToken()
-    if (!t) return
-    await api.closeRoom(t, id)
-    await refresh()
+    setListError(null)
+    try {
+      const t = await getAccessToken()
+      if (!t) return
+      await api.closeRoom(t, id)
+      await refresh()
+    } catch {
+      setListError('Could not close the room. Please try again.')
+    }
   }
   async function copy(slug: string) {
-    await navigator.clipboard.writeText(`${window.location.origin}/r/${slug}`)
-    setCopied(slug)
-    setTimeout(() => setCopied(null), 1500)
+    const url = `${window.location.origin}/r/${slug}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareUrl(null)
+      setCopied(slug)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {
+      setShareUrl(url) // clipboard denied or unavailable: show the link so it can be copied by hand
+    }
   }
 
   return (
@@ -88,6 +101,14 @@ export default function Dashboard() {
           <button className="btn primary block" style={{ marginTop: 12 }} disabled={busy}>Create room</button>
           {error && <p className="err" role="alert">{error}</p>}
         </form>
+
+        {listError && <p className="err" role="alert">{listError}</p>}
+        {shareUrl && (
+          <div className="notice" role="status" style={{ marginTop: 12 }}>
+            Could not copy automatically. Share this link: <b style={{ wordBreak: 'break-all', userSelect: 'all' }}>{shareUrl}</b>
+            <button className="btn ghost" onClick={() => setShareUrl(null)}>Dismiss</button>
+          </div>
+        )}
 
         <div className="rooms">
           {rooms.map((r) => (

@@ -22,3 +22,10 @@ export function canModerateChat(role: Role | undefined): boolean {
 export function canControlPlayback(role: Role | undefined, controlMode: 'host' | 'everyone' | undefined): boolean {
   return role === 'host' || (role !== undefined && controlMode === 'everyone')
 }
+
+/** The chat input's state: a muted member cannot type, and is told why. */
+export function chatComposer(enabled: boolean, muted: boolean): { disabled: boolean; placeholder: string } {
+  if (muted) return { disabled: true, placeholder: 'You are muted' }
+  if (!enabled) return { disabled: true, placeholder: 'Chat is off' }
+  return { disabled: false, placeholder: 'Say something' }
+}
