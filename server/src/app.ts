@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { sanitizeNickname, sanitizeText, type PublicSettings, type RoomSettings } from '@unison/shared'
 import type { Auth, AuthIdentity } from './auth'
 import { clientIp } from './clientIp'
+import { Metrics } from './metrics'
 import { hashPassword } from './password'
 import { hashIp } from './privacy'
 import { RateLimiter } from './rateLimiter'
@@ -21,6 +22,7 @@ export interface AppDeps {
   nextId: () => string
   trustProxy?: boolean
   makeSlug?: () => string
+  metrics?: Metrics
 }
 
 export const DEFAULT_SETTINGS: RoomSettings = {
@@ -66,6 +68,11 @@ export async function createApp(d: AppDeps) {
   app.addHook('onClose', async () => clearInterval(pruner))
   const ipKey = (req: FastifyRequest) => hashIp(clientIp(req.raw, d.trustProxy ?? false), d.ipSecret, d.now())
   const makeSlug = d.makeSlug ?? newSlug
+  const metrics = d.metrics ?? new Metrics()
+  const limited = (reply: FastifyReply) => {
+    metrics.inc('rateLimited')
+    return reply.code(429).send({ error: 'rate_limited' })
+  }
   const pub = (r: RoomRecord): PublicSettings => ({ ...r.settings, hasPassword: r.passwordHash !== null })
   const live = (slug: string) => d.manager.peek(slug)?.size ?? 0
 
@@ -83,10 +90,10 @@ export async function createApp(d: AppDeps) {
   }
 
   app.get('/health', async () => ({ ok: true }))
-  app.get('/stats', async () => d.manager.stats())
+  app.get('/stats', async () => ({ ...d.manager.stats(), ...metrics.snapshot() }))
 
   app.post('/guest', async (req, reply) => {
-    if (!guestLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
+    if (!guestLimiter.allow(ipKey(req))) return limited(reply)
     const nickname = sanitizeNickname((req.body as { nickname?: unknown } | null)?.nickname)
     if (!nickname) return reply.code(400).send({ error: 'bad_nickname' })
     const id = d.nextId()
@@ -94,7 +101,7 @@ export async function createApp(d: AppDeps) {
   })
 
   app.get('/rooms/:slug', async (req, reply) => {
-    if (!roomInfoLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
+    if (!roomInfoLimiter.allow(ipKey(req))) return limited(reply)
     const { slug } = req.params as { slug: string }
     const rec = await d.stores.rooms.getBySlug(slug)
     if (!rec || rec.closedAt !== null) return reply.code(404).send({ error: 'not_found' })
@@ -154,7 +161,7 @@ export async function createApp(d: AppDeps) {
   })
 
   app.post('/rooms/:slug/report', async (req, reply) => {
-    if (!reportLimiter.allow(ipKey(req))) return reply.code(429).send({ error: 'rate_limited' })
+    if (!reportLimiter.allow(ipKey(req))) return limited(reply)
     const parsed = reportBody.safeParse(req.body)
     const reason = parsed.success ? sanitizeText(parsed.data.reason, 500) : ''
     if (!reason) return reply.code(400).send({ error: 'bad_request' })
@@ -162,6 +169,7 @@ export async function createApp(d: AppDeps) {
     if (!rec) return reply.code(404).send({ error: 'not_found' })
     const me = await identify(req)
     await d.stores.reports.add({ roomId: rec.id, reporterId: me && !me.isGuest ? me.id : null, reason, at: d.now() })
+    metrics.inc('reports')
     return reply.code(202).send({ ok: true })
   })
 

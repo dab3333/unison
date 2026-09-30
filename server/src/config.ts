@@ -15,8 +15,20 @@ const schema = z.object({
   MAX_PER_IP: z.coerce.number().int().positive().default(10),
 })
 
+/** Loads a .env file into process.env if it exists (already-set variables win). Works on every Node 22. */
+export function loadEnvFileIfExists(file: string): boolean {
+  try {
+    process.loadEnvFile(file)
+    return true
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw e
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
-  const e = schema.parse(env)
+  // `KEY=` lines copied from .env.example mean "not set", not "set to an empty string".
+  const e = schema.parse(Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')))
   if (!e.SUPABASE_JWT_SECRET && !e.SUPABASE_JWKS_URL) {
     throw new Error('Set SUPABASE_JWT_SECRET or SUPABASE_JWKS_URL so the server can verify JWTs')
   }

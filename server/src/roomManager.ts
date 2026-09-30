@@ -1,3 +1,4 @@
+import type { Metrics } from './metrics'
 import { checkPassword } from './password'
 import { Room } from './room'
 import type { Stores } from './stores'
@@ -8,6 +9,7 @@ export interface ManagerDeps {
   nextId: () => string
   maxRooms: number
   idleMs: number
+  metrics?: Metrics
 }
 export type GetResult = { ok: true; room: Room } | { ok: false; code: 'not_found' | 'busy' }
 
@@ -68,6 +70,7 @@ export class RoomManager {
       nextId: this.d.nextId,
       hasPassword: rec.passwordHash !== null,
       verifyPassword: (pw) => checkPassword(pw, rec.passwordHash),
+      metrics: this.d.metrics,
       persist: {
         ban: (key) => void this.d.stores.bans.add(rec.id, key).catch(() => {}),
         saveSettings: (s) => void this.d.stores.rooms.saveSettings(rec.id, s).catch(() => {}),

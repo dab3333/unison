@@ -1,8 +1,9 @@
 import { createAuth } from './auth'
-import { loadConfig } from './config'
+import { loadConfig, loadEnvFileIfExists } from './config'
 import { buildServer } from './server'
 import { createSupabaseStores } from './supabaseStores'
 
+loadEnvFileIfExists('.env') // server/.env for `npm run dev|start -w server`; absent in Docker (secrets come from the env)
 const cfg = loadConfig()
 const { app } = await buildServer({
   auth: createAuth({

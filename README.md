@@ -37,9 +37,9 @@ Open http://localhost:5173 and paste the printed `localStorage.setItem('e2e-toke
 
 1. Create a Supabase project. In the SQL editor run `server/supabase/migrations/0001_init.sql`.
 2. Auth > Providers: enable Google and Discord (add the OAuth client IDs). Auth > URL configuration: add your client URL and `http://localhost:5173` as redirect URLs. Email magic links work out of the box.
-3. Copy `server/.env.example` to `server/.env` and `client/.env.example` to `client/.env`, then fill them in. `SUPABASE_JWT_SECRET` (legacy projects) or `SUPABASE_JWKS_URL` (newer projects) is how the server verifies sign-ins. Never put the service role key in the client.
-4. `npm run dev -w server` and `npm run dev -w client`.
-5. Optional database check: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm test -w server -- supabaseStores` against a throwaway project.
+3. Copy `server/.env.example` to `server/.env` and `client/.env.example` to `client/.env`, then fill them in. `SUPABASE_JWT_SECRET` (legacy projects) or `SUPABASE_JWKS_URL` (newer projects) is how the server verifies sign-ins; leave the other one empty (empty values count as unset). Never put the service role key in the client.
+4. `npm run dev -w server` and `npm run dev -w client`. The server loads `server/.env` itself when the file exists; variables already set in the environment win.
+5. **Launch-blocking database check (not optional):** against a real, throwaway Supabase project, run the migration, then `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm test -w server -- supabaseStores`. The suite is skipped without those variables, so a green `npm test` proves nothing about Postgres. On the real project also verify that Google, Discord and magic-link redirects land back on the client, that the sign-up trigger creates a `profiles` row, and that sign-ins verify with the method you configured (`SUPABASE_JWKS_URL` for asymmetric keys, `SUPABASE_JWT_SECRET` for legacy HS256). Do all of this before inviting anyone.
 
 ## Test
 
@@ -54,21 +54,24 @@ npx tsx server/scripts/load.ts             # ~300 sockets over 20 rooms
 **Server (Fly.io):** rooms are in memory, so run exactly one machine.
 ```bash
 fly launch --no-deploy --copy-config
-fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SUPABASE_JWT_SECRET=... \
+# Now, before the first deploy: set CLIENT_ORIGIN in fly.toml to your client URL (CORS refuses every other origin).
+# Set SUPABASE_JWKS_URL (newer projects) or SUPABASE_JWT_SECRET (legacy HS256 projects); drop the one you do not use.
+fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  SUPABASE_JWKS_URL=https://YOUR-PROJECT.supabase.co/auth/v1/.well-known/jwks.json SUPABASE_JWT_SECRET=... \
   GUEST_TOKEN_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
   IP_HASH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 fly deploy
 fly scale count 1
 ```
-Set `CLIENT_ORIGIN` in `fly.toml` to your client URL.
 
-**Client (Cloudflare Pages or Vercel):** build command `npm ci && npm run build -w client`, output `client/dist`, env `VITE_API_URL`, `VITE_WS_URL` (`wss://...`), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. `client/public/_redirects` handles SPA routing on Cloudflare Pages. Do **not** set `VITE_E2E`.
+**Client (Cloudflare Pages or Vercel):** build command `npm ci && npm run build -w client`, output `client/dist`, env `VITE_API_URL`, `VITE_WS_URL` (`wss://...`), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. `client/public/_redirects` handles SPA routing on Cloudflare Pages. Do **not** set `VITE_E2E`. The `client/dist` left behind by `npm run test:e2e` is built with `VITE_E2E=1` (dev-token sign-in) and must never be deployed; always build for production from a clean environment.
 
 ## Launch checklist
 
 Before inviting anyone:
 - [ ] Replace `takedown@unison.example` in `client/src/pages/Terms.tsx` with a real, monitored address.
-- [ ] `curl https://YOUR-SERVER/health` returns `{"ok":true}`; `/stats` shows `{rooms, sockets}`.
+- [ ] Launch-blocking: the live-database check from "Real run" step 5 passed against a real Supabase project (migration, `supabaseStores` suite, OAuth redirects, sign-up trigger, JWKS or HS256 verification).
+- [ ] `curl https://YOUR-SERVER/health` returns `{"ok":true}`; `/stats` shows `rooms`, `sockets` and the counters `joins`, `rateLimited`, `reports`, `kicks`, `bans`, `reconnectsReplaced` (monotonic since the last restart).
 - [ ] Manual pass: YouTube in Chrome, Firefox and Safari; iOS Safari autoplay ("Tap to join playback"); a local-file duration mismatch shows the warning and offset slider; Wi-Fi off and on reconnects; the host closing the tab keeps chat working; phone layouts in portrait, landscape and fullscreen.
 - [ ] Ban, kick, mute, guests-off, viewer cap and password each verified once against production.
 - [ ] Spending cap set on every paid tier (Fly, Supabase). Alert when `/stats` sockets pass 70% of `MAX_SOCKETS` (default 500).

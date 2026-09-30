@@ -1,4 +1,5 @@
 import type { RoomSettings, ServerMessage } from '@unison/shared'
+import { Metrics } from '../src/metrics'
 import { Room, type Conn, type Identity } from '../src/room'
 
 export class FakeConn implements Conn {
@@ -28,6 +29,7 @@ export function makeRoom(over: { settings?: Partial<RoomSettings>; bans?: string
   let n = 0
   let verifyCalls = 0
   const persisted = { bans: [] as string[], settings: [] as RoomSettings[] }
+  const metrics = new Metrics()
   const room = new Room('room-1', 'quiet-otter-42', 'host-1', { ...defaultSettings, ...over.settings }, over.bans ?? [], {
     now: () => t,
     nextId: () => `id-${++n}`,
@@ -37,8 +39,9 @@ export function makeRoom(over: { settings?: Partial<RoomSettings>; bans?: string
       return !over.password || pw === over.password
     },
     persist: { ban: (k) => persisted.bans.push(k), saveSettings: (s) => persisted.settings.push(s) },
+    metrics,
   })
-  return { room, persisted, advance: (ms: number) => (t += ms), now: () => t, verifyCalls: () => verifyCalls }
+  return { room, persisted, metrics, advance: (ms: number) => (t += ms), now: () => t, verifyCalls: () => verifyCalls }
 }
 
 /** Join an identity with a fresh FakeConn and return it. */

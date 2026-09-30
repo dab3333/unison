@@ -36,7 +36,16 @@ const create = async (body: unknown = { name: 'Movie night' }, id = OWNER) =>
 describe('health and stats', () => {
   it('reports health and live stats', async () => {
     expect((await app.inject('/health')).json()).toEqual({ ok: true })
-    expect((await app.inject('/stats')).json()).toEqual({ rooms: 0, sockets: 0 })
+    expect((await app.inject('/stats')).json()).toEqual({
+      rooms: 0, sockets: 0, joins: 0, rateLimited: 0, reports: 0, kicks: 0, bans: 0, reconnectsReplaced: 0,
+    })
+  })
+  it('counts reports and REST rate-limit hits in /stats', async () => {
+    const { slug } = (await create()).json()
+    for (let i = 0; i < 6; i++) {
+      await app.inject({ method: 'POST', url: `/rooms/${slug}/report`, payload: { reason: 'spam' }, remoteAddress: '198.51.100.40' })
+    }
+    expect((await app.inject('/stats')).json()).toMatchObject({ reports: 5, rateLimited: 1 })
   })
 })
 

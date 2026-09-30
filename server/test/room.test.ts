@@ -451,3 +451,17 @@ describe('room password abuse (I3)', () => {
     expect(joinAs(ctx.room, user('u2'), 'c4').result).toEqual({ ok: false, code: 'bad_password' })
   })
 })
+
+describe('launch metrics (I10b)', () => {
+  it('counts joins, replacements, kicks, bans and rate-limit hits', () => {
+    const ctx = makeRoom()
+    joinAs(ctx.room, host())
+    joinAs(ctx.room, guest('g1'), 'c1')
+    joinAs(ctx.room, guest('g1'), 'c1b') // second tab replaces the first
+    joinAs(ctx.room, guest('g2'), 'c2')
+    ctx.room.handle('c-host-1', { type: 'mod', op: 'kick', target: 'g1' })
+    ctx.room.handle('c-host-1', { type: 'mod', op: 'ban', target: 'g2' })
+    for (let i = 0; i < 11; i++) ctx.room.handle('c-host-1', { type: 'control', version: 0, action: 'setSource', source } as never)
+    expect(ctx.metrics.snapshot()).toEqual({ joins: 4, reconnectsReplaced: 1, kicks: 1, bans: 1, rateLimited: 1, reports: 0 })
+  })
+})

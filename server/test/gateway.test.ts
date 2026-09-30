@@ -221,6 +221,83 @@ describe('gateway', () => {
     expect(await bad.closed).toBe(4008)
     good.send({ type: 'ping', t0: 42 })
     expect((await good.waitFor((m) => m.type === 'pong' && m.t0 === 42)).t0).toBe(42)
+    expect(((await (await fetch(`http://127.0.0.1:${port}/stats`)).json()) as Msg).rateLimited).toBeGreaterThanOrEqual(1)
     good.ws.close()
   })
 })
+
+describe('gateway integration: moderation, limits, buffering, reconnect (spec section 8)', () => {
+  async function joined(slug: string, token: string) {
+    const c = connect(port, slug); await c.opened
+    c.send({ type: 'hello', token })
+    const welcome = await c.waitFor(ofType('welcome'))
+    return { ...c, welcome }
+  }
+
+  it('kick closes the target with 4003 and tells the others', async () => {
+    const rec = await start()
+    const h = await joined(rec.slug, await hostToken())
+    const g = await joined(rec.slug, await guestToken('g1'))
+    h.send({ type: 'mod', op: 'kick', target: 'g1' })
+    expect(await g.closed).toBe(4003)
+    await h.waitFor((m) => m.type === 'members' && m.members.length === 1)
+    h.ws.close()
+  })
+
+  it('refuses a viewer over the cap with room_full and 4006, but never the host', async () => {
+    const rec = await start()
+    await stores.rooms.saveSettings(rec.id, { ...rec.settings, maxViewers: 1 })
+    const g1 = await joined(rec.slug, await guestToken('g1'))
+    const g2 = connect(port, rec.slug); await g2.opened
+    g2.send({ type: 'hello', token: await guestToken('g2') })
+    expect((await g2.waitFor(ofType('error'))).code).toBe('room_full')
+    expect(await g2.closed).toBe(4006)
+    const h = await joined(rec.slug, await hostToken())
+    expect(h.welcome.role).toBe('host')
+    g1.ws.close(); h.ws.close()
+  })
+
+  it('refuses guests with forbidden and 4006 when guests are off, and lets signed-in users in', async () => {
+    const rec = await start()
+    await stores.rooms.saveSettings(rec.id, { ...rec.settings, allowGuests: false })
+    const g = connect(port, rec.slug); await g.opened
+    g.send({ type: 'hello', token: await guestToken('g1') })
+    expect((await g.waitFor(ofType('error'))).code).toBe('forbidden')
+    expect(await g.closed).toBe(4006)
+    const h = await joined(rec.slug, await hostToken())
+    h.ws.close()
+  })
+
+  it('pauses everyone while a member buffers and resumes when they are ready', async () => {
+    const rec = await start()
+    const h = await joined(rec.slug, await hostToken())
+    const g = await joined(rec.slug, await guestToken('g1'))
+    h.send({ type: 'control', version: 0, action: 'setSource', source: media })
+    h.send({ type: 'control', version: 1, action: 'play', position: 0 })
+    await g.waitFor((m) => m.type === 'state' && m.state.isPlaying)
+    g.send({ type: 'buffering', value: true })
+    const paused = await h.waitFor((m) => m.type === 'state' && !m.state.isPlaying && m.holdingUp)
+    expect(paused.holdingUp).toEqual(['g1'])
+    g.send({ type: 'buffering', value: false })
+    await h.waitFor((m) => m.type === 'state' && m.state.isPlaying && m.state.version > paused.state.version)
+    h.ws.close(); g.ws.close()
+  })
+
+  it('a reconnecting client gets a fresh welcome with the current version, and its stale version is refused', async () => {
+    const rec = await start()
+    const h1 = await joined(rec.slug, await hostToken())
+    h1.send({ type: 'control', version: 0, action: 'setSource', source: media })
+    h1.send({ type: 'control', version: 1, action: 'play', position: 0 })
+    await h1.waitFor((m) => m.type === 'state' && m.state.version === 2)
+    h1.ws.close(); await h1.closed
+    const g = await joined(rec.slug, await guestToken('g1')) // keeps the room live meanwhile
+    const h2 = await joined(rec.slug, await hostToken())
+    expect(h2.welcome.state).toMatchObject({ version: 2, isPlaying: true })
+    h2.send({ type: 'control', version: 0, action: 'pause', position: 1 }) // the version it saw before the drop
+    expect((await h2.waitFor(ofType('error'))).code).toBe('stale')
+    h2.send({ type: 'control', version: 2, action: 'pause', position: 1 })
+    await g.waitFor((m) => m.type === 'state' && m.state.version === 3 && !m.state.isPlaying)
+    h2.ws.close(); g.ws.close()
+  })
+})
+

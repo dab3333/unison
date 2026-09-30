@@ -3,6 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { clientMessageSchema, type ErrorCode, type ServerMessage } from '@unison/shared'
 import type { Auth } from './auth'
 import { clientIp } from './clientIp'
+import type { Metrics } from './metrics'
 import { hashIp } from './privacy'
 import { TokenBucket } from './rateLimiter'
 import type { Conn, Room } from './room'
@@ -18,6 +19,7 @@ export interface GatewayDeps {
   maxPerIp: number
   trustProxy: boolean
   helloTimeoutMs?: number
+  metrics?: Metrics
 }
 
 const send = (ws: WebSocket, m: ServerMessage) => {
@@ -71,7 +73,10 @@ export function attachGateway(server: Server, d: GatewayDeps): { close(): void }
 
     ws.on('message', async (raw) => {
       if (ws.readyState !== ws.OPEN) return // already closing (e.g. over the limit): drop what is still queued
-      if (!bucket.take()) return void ws.close(4008, 'rate limit exceeded')
+      if (!bucket.take()) {
+        d.metrics?.inc('rateLimited')
+        return void ws.close(4008, 'rate limit exceeded')
+      }
       let json: unknown
       try {
         json = JSON.parse(raw.toString())

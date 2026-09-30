@@ -82,7 +82,10 @@ export default function Dashboard() {
           <select id="cap" value={cap} onChange={(e) => setCap(Number(e.target.value))}>
             <option value={5}>5</option><option value={15}>15</option><option value={30}>30</option>
           </select>
-          <button className="btn primary block" style={{ marginTop: 16 }} disabled={busy}>Create room</button>
+          <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
+            Only share content you have the rights to watch together. See the <Link to="/terms">terms</Link>.
+          </p>
+          <button className="btn primary block" style={{ marginTop: 12 }} disabled={busy}>Create room</button>
           {error && <p className="err" role="alert">{error}</p>}
         </form>
 

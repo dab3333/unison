@@ -9,6 +9,7 @@ import {
   type ServerMessage,
 } from '@unison/shared'
 import { ChatService } from './chatService'
+import type { Metrics } from './metrics'
 import { can, canTarget, type Action } from './permissions'
 import { RateLimiter } from './rateLimiter'
 import { SyncEngine } from './syncEngine'
@@ -30,6 +31,7 @@ export interface RoomDeps {
   hasPassword: boolean
   verifyPassword(pw: string | undefined): boolean
   persist: { ban(key: string): void; saveSettings(s: RoomSettings): void }
+  metrics?: Metrics
 }
 
 interface Penalties {
@@ -132,7 +134,10 @@ export class Room {
     if (banKeys(identity, conn.ipHash).some((k) => this.bans.has(k))) return { ok: false, code: 'banned' }
     if (identity.isGuest && !this.settings.allowGuests) return { ok: false, code: 'forbidden' }
     if (!isHost && this.deps.hasPassword && !this.verified.has(identity.id)) {
-      if (!this.pwFailures.wouldAllow(conn.ipHash)) return { ok: false, code: 'rate_limited' }
+      if (!this.pwFailures.wouldAllow(conn.ipHash)) {
+        this.deps.metrics?.inc('rateLimited')
+        return { ok: false, code: 'rate_limited' }
+      }
       if (!this.deps.verifyPassword(password)) {
         this.pwFailures.allow(conn.ipHash)
         return { ok: false, code: 'bad_password' }
@@ -141,7 +146,11 @@ export class Room {
     }
     const existing = this.entries.get(identity.id)
     if (!existing && !isHost && this.entries.size >= this.settings.maxViewers) return { ok: false, code: 'room_full' }
-    if (existing) existing.conn.close(4001, 'replaced by a newer connection')
+    if (existing) {
+      existing.conn.close(4001, 'replaced by a newer connection')
+      this.deps.metrics?.inc('reconnectsReplaced')
+    }
+    this.deps.metrics?.inc('joins')
     let pen = this.penalties.get(identity.id)
     if (!pen) {
       pen = { muted: false, mutedUntil: 0, strikes: [] }
@@ -266,6 +275,7 @@ export class Room {
     if (!canTarget(actorRole, this.roleOf(msg.target))) return this.err(actor, 'forbidden')
     switch (msg.op) {
       case 'kick':
+        this.deps.metrics?.inc('kicks')
         return this.evict(target, 4003, 'kicked')
       case 'ban':
         for (const key of banKeys(target.identity, target.conn.ipHash)) {
@@ -273,6 +283,7 @@ export class Room {
           this.deps.persist.ban(key)
         }
         this.verified.delete(target.identity.id)
+        this.deps.metrics?.inc('bans')
         return this.evict(target, 4004, 'banned')
       case 'mute':
         target.pen.muted = true
@@ -342,6 +353,7 @@ export class Room {
     const pen = entry.pen
     pen.strikes = pen.strikes.filter((s) => t - s < STRIKE_WINDOW_MS)
     pen.strikes.push(t)
+    this.deps.metrics?.inc('rateLimited')
     this.err(entry, 'rate_limited')
     if (pen.strikes.length >= 10) {
       this.evict(entry, 4008, 'rate limit exceeded')
