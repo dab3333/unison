@@ -1,0 +1,11 @@
+{
+  "name": "unison",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "client", "e2e"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

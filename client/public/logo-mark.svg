@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Unison">
+  <defs><clipPath id="a"><circle cx="24" cy="32" r="18"/></clipPath></defs>
+  <circle cx="24" cy="32" r="18" fill="#7C6CFF"/>
+  <circle cx="40" cy="32" r="18" fill="#FF7A59"/>
+  <circle cx="40" cy="32" r="18" fill="#FFC857" clip-path="url(#a)"/>
+  <path d="M29 24.5v15l11-7.5z" fill="#1B1533" stroke="#1B1533" stroke-width="2" stroke-linejoin="round"/>
+</svg>

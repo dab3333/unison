@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+client/*
+!client/package.json
+e2e/*
+!e2e/package.json
+docs
+.git
+**/.env
