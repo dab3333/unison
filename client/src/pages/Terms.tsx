@@ -14,7 +14,7 @@ export default function Terms() {
         <h3>Privacy</h3>
         <p>We store your account profile, your rooms, bans and abuse reports. We do not store chat contents or raw IP addresses; IP addresses are hashed with a daily-rotating salt to limit abuse.</p>
         <h3>Takedown and contact</h3>
-        <p>To report content or request a takedown, use the Report button in a room or email <a href="mailto:takedown@unison.example">takedown@unison.example</a>. Replace this address before launch.</p>
+        <p>To report content, use the Report button in a room. To request a takedown, open an issue at <a href="https://github.com/dab3333/unison/issues">github.com/dab3333/unison/issues</a> with the room link and what should be removed. Issues are public, so do not include private details.</p>
       </main>
     </div>
   )

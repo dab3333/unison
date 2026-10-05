@@ -69,7 +69,7 @@ fly scale count 1
 ## Launch checklist
 
 Before inviting anyone:
-- [ ] Replace `takedown@unison.example` in `client/src/pages/Terms.tsx` with a real, monitored address.
+- [x] Takedown contact: `client/src/pages/Terms.tsx` points at the repo's GitHub Issues page (public). Watch it, and switch to a dedicated mailbox if takedown volume or privacy needs grow.
 - [ ] Launch-blocking: the live-database check from "Real run" step 5 passed against a real Supabase project (migration, `supabaseStores` suite, OAuth redirects, sign-up trigger, JWKS or HS256 verification).
 - [ ] `curl https://YOUR-SERVER/health` returns `{"ok":true}`; `/stats` shows `rooms`, `sockets` and the counters `joins`, `rateLimited`, `reports`, `kicks`, `bans`, `reconnectsReplaced` (monotonic since the last restart).
 - [ ] Manual pass: YouTube in Chrome, Firefox and Safari; iOS Safari autoplay ("Tap to join playback"); a local-file duration mismatch shows the warning and offset slider; Wi-Fi off and on reconnects; the host closing the tab keeps chat working; phone layouts in portrait, landscape and fullscreen.
