@@ -70,7 +70,8 @@ fly scale count 1
 
 Before inviting anyone:
 - [x] Takedown contact: `client/src/pages/Terms.tsx` points at the repo's GitHub Issues page (public). Watch it, and switch to a dedicated mailbox if takedown volume or privacy needs grow.
-- [ ] Launch-blocking: the live-database check from "Real run" step 5 passed against a real Supabase project (migration, `supabaseStores` suite, OAuth redirects, sign-up trigger, JWKS or HS256 verification).
+- [x] Launch-blocking, database part: the migration and the `supabaseStores` suite (7 tests, including the duplicate-slug `SlugTakenError` mapping) passed against a real Supabase project on 2026-10-06. Re-run it against the production project after applying the migration there.
+- [ ] Launch-blocking, auth part, not yet verified live: sign in end to end through the server (OAuth redirects for Google and Discord, the sign-up trigger creating a `profiles` row, and the server accepting the project's JWTs). To pick the verification method, open `https://YOUR-PROJECT.supabase.co/auth/v1/.well-known/jwks.json`: if it returns a key, set `SUPABASE_JWKS_URL` to that address and leave `SUPABASE_JWT_SECRET` unset; otherwise it is a legacy HS256 project, so set `SUPABASE_JWT_SECRET`.
 - [ ] `curl https://YOUR-SERVER/health` returns `{"ok":true}`; `/stats` shows `rooms`, `sockets` and the counters `joins`, `rateLimited`, `reports`, `kicks`, `bans`, `reconnectsReplaced` (monotonic since the last restart).
 - [ ] Manual pass: YouTube in Chrome, Firefox and Safari; iOS Safari autoplay ("Tap to join playback"); a local-file duration mismatch shows the warning and offset slider; Wi-Fi off and on reconnects; the host closing the tab keeps chat working; phone layouts in portrait, landscape and fullscreen.
 - [ ] Ban, kick, mute, guests-off, viewer cap and password each verified once against production.
