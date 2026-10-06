@@ -94,6 +94,9 @@ export interface YTNamespace {
 }
 export interface YTPlayerOptions {
   videoId: string
+  // YouTube injects a fixed 640x390 iframe unless told otherwise; 100% makes it fill the sized container.
+  width: string
+  height: string
   playerVars: Record<string, number>
   events: {
     onReady: () => void
@@ -179,6 +182,8 @@ export async function createYouTubeAdapter(
     }
     const yt = new YT.Player(container, {
       videoId,
+      width: '100%',
+      height: '100%',
       playerVars: { controls: controls ? 1 : 0, disablekb: controls ? 0 : 1, playsinline: 1, rel: 0, modestbranding: 1 },
       events: {
         onReady: () => {

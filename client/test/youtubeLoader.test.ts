@@ -131,6 +131,30 @@ describe('createYouTubeAdapter failure paths', () => {
   })
 })
 
+describe('createYouTubeAdapter player options', () => {
+  it('asks YouTube for a player that fills its container (the default is a fixed 640x390 iframe)', async () => {
+    let opts!: YTPlayerOptions
+    class FakePlayer implements YTPlayerLike {
+      constructor(_el: HTMLElement, o: YTPlayerOptions) { opts = o }
+      playVideo() {}
+      pauseVideo() {}
+      seekTo() {}
+      getCurrentTime() { return 0 }
+      getDuration() { return 0 }
+      setPlaybackRate() {}
+      getAvailablePlaybackRates() { return [1] }
+      getPlayerState() { return -1 }
+      destroy() {}
+    }
+    const p = createYouTubeAdapter({} as HTMLElement, 'abc', true, { loadApi: async () => ({ Player: FakePlayer }) })
+    await new Promise((r) => setTimeout(r, 0))
+    opts.events.onReady()
+    await p
+    expect(opts.width).toBe('100%')
+    expect(opts.height).toBe('100%')
+  })
+})
+
 describe('YouTubeAdapter.destroy', () => {
   it('clears the poll timer and destroys the YT player', () => {
     vi.useFakeTimers()
