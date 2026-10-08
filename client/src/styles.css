@@ -189,3 +189,17 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 @media (prefers-reduced-motion: reduce){
   .rise,.mock .c-violet,.mock .c-coral,.mock .c-lens,.mock .sync-a,.mock .sync-b,.mock .together,.mock .heads b{animation:none}
 }
+
+/* ---- Account menu (avatar button in the header) ---- */
+.nav-user{display:flex;align-items:center;gap:10px}
+.user-menu{position:relative}
+.user-btn{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:0 16px 0 6px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:600 15px var(--font-body);cursor:pointer}
+.user-btn:hover{border-color:var(--violet)}
+.user-btn .avatar{margin-right:0}
+.menu{position:absolute;right:0;top:calc(100% + 8px);min-width:220px;max-width:min(320px,calc(100vw - 32px));display:grid;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;z-index:15}
+.menu-head{display:grid;gap:2px;padding:10px 12px;margin-bottom:6px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.menu-head .muted{font-size:13px}
+.menu-item{min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--text);font:600 15px var(--font-body);text-align:left;cursor:pointer}
+.menu-item:hover{background:var(--surface-2)}
+.menu-item:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+@media(max-width:560px){.user-name{display:none}.user-btn{padding:0 6px}}

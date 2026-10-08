@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { Brand } from '../components/Brand'
 import { RoomPreview } from '../components/RoomPreview'
+import { UserMenu } from '../components/UserMenu'
+import { useAuth } from '../lib/auth'
 import { useReveal } from '../lib/useReveal'
 
 /** Stagger index for the entrance animation (see `.rise` in styles.css). */
@@ -9,17 +11,25 @@ const step = (i: number) => ({ '--i': i }) as CSSProperties
 
 export default function Landing() {
   const features = useReveal<HTMLElement>()
+  const { user, loading, signOut } = useAuth()
   return (
     <div className="wrap">
       <nav className="nav">
         <Brand />
-        <Link className="btn" to="/signin">Sign in</Link>
+        {loading ? null : user ? (
+          <div className="nav-user">
+            <Link className="btn" to="/dashboard">Dashboard</Link>
+            <UserMenu user={user} onSignOut={() => void signOut()} />
+          </div>
+        ) : (
+          <Link className="btn" to="/signin">Sign in</Link>
+        )}
       </nav>
       <header className="hero">
         <h1 className="rise" style={step(0)}>Press play,<br /><span className="accent">together.</span></h1>
         <p className="rise" style={step(1)}>Free watch parties with live chat. Everyone plays their own copy, Unison keeps it in perfect sync. No downloads, no lag.</p>
         <div className="cta rise" style={step(2)}>
-          <Link className="btn primary" to="/signin">Create a room</Link>
+          <Link className="btn primary" to={user ? '/dashboard' : '/signin'}>Create a room</Link>
         </div>
         <RoomPreview className="rise" style={step(3)} />
       </header>

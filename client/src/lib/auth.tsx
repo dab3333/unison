@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { E2E } from './identity'
 import { supabase } from './supabase'
 
-export interface AuthUser { id: string; name: string }
+export interface AuthUser { id: string; name: string; email?: string }
 interface Ctx {
   user: AuthUser | null
   loading: boolean
@@ -16,7 +16,7 @@ const AuthContext = createContext<Ctx>(null as never)
 function toUser(s: Session | null): AuthUser | null {
   if (!s) return null
   const m = (s.user.user_metadata ?? {}) as Record<string, string | undefined>
-  return { id: s.user.id, name: m.full_name ?? m.name ?? s.user.email?.split('@')[0] ?? 'Host' }
+  return { id: s.user.id, name: m.full_name ?? m.name ?? s.user.email?.split('@')[0] ?? 'Host', email: s.user.email }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const redirectTo = `${window.location.origin}/dashboard`
   const user: AuthUser | null = E2E
-    ? localStorage.getItem('e2e-token') ? { id: 'e2e-host', name: 'E2E Host' } : null
+    ? localStorage.getItem('e2e-token') ? { id: 'e2e-host', name: 'E2E Host', email: 'e2e@example.test' } : null
     : toUser(session)
 
   const value: Ctx = {

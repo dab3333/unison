@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Brand } from '../components/Brand'
+import { UserMenu } from '../components/UserMenu'
 import { api, messageFor, type MyRoom } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { getAccessToken } from '../lib/identity'
@@ -77,7 +78,7 @@ export default function Dashboard() {
     <div className="wrap">
       <nav className="nav">
         <Brand />
-        <button className="btn ghost" onClick={() => void signOut()}>Sign out</button>
+        {user && <UserMenu user={user} onSignOut={() => void signOut()} />}
       </nav>
       <main style={{ padding: '16px 0 40px' }}>
         <h2>My rooms</h2>
