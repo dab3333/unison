@@ -58,8 +58,17 @@ input:focus,select:focus,.btn:focus-visible{outline:2px solid var(--amber);outli
 .hero .cta{display:flex;flex-direction:column;gap:12px;max-width:340px;margin:0 auto 36px}
 @media(min-width:560px){.hero .cta{flex-direction:row;max-width:none;justify-content:center}}
 .mock{margin:8px auto 0;max-width:720px;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--surface);text-align:left}
-.mock .screen{aspect-ratio:16/9;background:#150f2e;display:grid;place-items:center}
-.mock .screen span{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:26px}
+.mock .screen{position:relative;aspect-ratio:16/9;background:#150f2e;overflow:hidden}
+.mock .scene{position:absolute;inset:0;width:100%;height:100%}
+.mock .bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(15,11,30,.78);font-size:13px;color:var(--text)}
+.mock .bar .icon{width:18px;height:18px;flex:none}
+.mock .time{flex:none;font-variant-numeric:tabular-nums;color:var(--muted)}
+.mock .track{position:relative;flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.18)}
+.mock .track i{display:block;height:100%;width:11%;border-radius:3px;background:var(--violet)}
+.mock .heads{position:absolute;left:11%;top:50%;transform:translate(-50%,-50%);display:flex;padding-left:6px}
+.mock .heads b{width:22px;height:22px;border-radius:50%;border:2px solid var(--bg);margin-left:-6px;display:grid;place-items:center;font:700 10px var(--font-body);color:#1B1533}
+.mock .together{flex:none;color:var(--ok);font-weight:600}
+@media(max-width:480px){.mock .together{display:none}.mock .bar{padding:10px 12px;gap:10px}}
 .mock .chatline{padding:10px 14px;font-size:14px;border-top:1px solid var(--line)}
 .features{display:grid;gap:14px;padding:32px 0}
 @media(min-width:720px){.features{grid-template-columns:repeat(3,1fr)}}

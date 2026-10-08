@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Brand } from '../components/Brand'
+import { RoomPreview } from '../components/RoomPreview'
 
 export default function Landing() {
   return (
@@ -14,11 +15,7 @@ export default function Landing() {
         <div className="cta">
           <Link className="btn primary" to="/signin">Create a room</Link>
         </div>
-        <div className="mock" aria-hidden="true">
-          <div className="screen"><span><svg className="icon" viewBox="0 0 24 24" style={{ width: 28, height: 28 }}><path d="M8 5v14l11-7z" /></svg></span></div>
-          <div className="chatline"><b style={{ color: 'var(--violet)' }}>Maya</b> ok wait for the good part</div>
-          <div className="chatline"><b style={{ color: 'var(--coral)' }}>Leo</b> synced! 3 people in unison</div>
-        </div>
+        <RoomPreview />
       </header>
       <section className="features" id="how">
         <div className="card"><b>1. Make a room</b><span className="muted">Sign in and get a shareable link in one tap.</span></div>
