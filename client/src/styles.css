@@ -160,3 +160,32 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 
 .modal{position:fixed;inset:0;background:rgba(15,11,30,.85);display:grid;place-items:center;z-index:20;padding:16px}
 .modal .card{width:100%;max-width:420px;max-height:90dvh;overflow:auto}
+
+/* ---- Landing motion: entrance, the "unison" sequence in the preview, scroll reveal.
+   Base styles are the FINAL state, so turning animations off (reduced motion) just shows the end result. ---- */
+.pill.warn{background:rgba(255,200,87,.15);color:var(--amber)}
+.mock{--spread:110px}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes drift-in-left{from{transform:translateX(-72px)}}
+@keyframes drift-in-right{from{transform:translateX(72px)}}
+@keyframes glide{from{transform:translateX(var(--from,0))}}
+@keyframes fade-in{from{opacity:0}}
+@keyframes fade-out{from{opacity:1}}
+.rise{animation:rise .8s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i,0)*110ms)}
+.mock .c-violet{animation:drift-in-left 1.6s cubic-bezier(.65,0,.35,1) .9s both}
+.mock .c-coral{animation:drift-in-right 1.6s cubic-bezier(.65,0,.35,1) .9s both}
+.mock .c-lens{animation:fade-in .6s ease-out 2.4s both}
+.mock .sync-a{opacity:0;animation:fade-out .4s ease 2.5s both}
+.mock .sync-b{animation:fade-in .5s ease-out 2.6s both}
+.mock .together{animation:fade-in .5s ease-out 2.9s both}
+.mock .heads b{animation:glide 1.3s cubic-bezier(.65,0,.35,1) 1.1s both}
+.mock .heads b:nth-child(2){--from:var(--spread);animation-delay:1.2s}
+.mock .heads b:nth-child(3){--from:calc(var(--spread)*2);animation-delay:1.3s}
+.reveal .card{opacity:0;transform:translateY(14px)}
+.reveal.in .card{opacity:1;transform:none;transition:opacity .6s ease-out,transform .6s cubic-bezier(.2,.7,.2,1)}
+.reveal.in .card:nth-child(2){transition-delay:90ms}
+.reveal.in .card:nth-child(3){transition-delay:180ms}
+@media(max-width:480px){.mock{--spread:56px}}
+@media (prefers-reduced-motion: reduce){
+  .rise,.mock .c-violet,.mock .c-coral,.mock .c-lens,.mock .sync-a,.mock .sync-b,.mock .together,.mock .heads b{animation:none}
+}
