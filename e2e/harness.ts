@@ -12,7 +12,7 @@ const auth = createAuth({ guestSecret: 'e2e-guest-secret-0123456789abcdef', supa
 const { app } = await buildServer({
   auth,
   stores: createMemoryStores(),
-  clientOrigin: ['http://localhost:5173', 'http://127.0.0.1:4173', 'http://localhost:4173'],
+  clientOrigin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:4173', 'http://localhost:4173'],
   ipSecret: 'e2e-ip-secret-0123456789abcdef',
   trustProxy: false,
   maxRooms: 100,

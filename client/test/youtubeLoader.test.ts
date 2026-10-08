@@ -76,7 +76,7 @@ describe('createYouTubeAdapter failure paths', () => {
   it('rejects with the code on player error and destroys the player, leaving no timers', async () => {
     vi.useFakeTimers()
     const { destroy, loadApi, events } = setup()
-    const p = createYouTubeAdapter(el, 'x', true, { loadApi })
+    const p = createYouTubeAdapter(el, 'x', { loadApi })
     const assertion = expect(p).rejects.toThrow(/150/)
     await vi.advanceTimersByTimeAsync(0)
     events().onError({ data: 150 })
@@ -88,7 +88,7 @@ describe('createYouTubeAdapter failure paths', () => {
   it('rejects when onReady never fires, destroying the player', async () => {
     vi.useFakeTimers()
     const { destroy, loadApi } = setup()
-    const p = createYouTubeAdapter(el, 'x', true, { loadApi, readyTimeoutMs: 15_000 })
+    const p = createYouTubeAdapter(el, 'x', { loadApi, readyTimeoutMs: 15_000 })
     const assertion = expect(p).rejects.toThrow(/timed out/)
     await vi.advanceTimersByTimeAsync(15_000)
     await assertion
@@ -99,7 +99,7 @@ describe('createYouTubeAdapter failure paths', () => {
   it('a late onReady after rejection is harmless', async () => {
     vi.useFakeTimers()
     const { loadApi, events } = setup()
-    const p = createYouTubeAdapter(el, 'x', true, { loadApi })
+    const p = createYouTubeAdapter(el, 'x', { loadApi })
     const assertion = expect(p).rejects.toThrow()
     await vi.advanceTimersByTimeAsync(0)
     events().onError({ data: 2 })
@@ -111,7 +111,7 @@ describe('createYouTubeAdapter failure paths', () => {
   it('resolves normally when ready fires', async () => {
     vi.useFakeTimers()
     const { loadApi, events } = setup()
-    const p = createYouTubeAdapter(el, 'x', true, { loadApi })
+    const p = createYouTubeAdapter(el, 'x', { loadApi })
     await vi.advanceTimersByTimeAsync(0)
     events().onReady()
     await expect(p).resolves.toBeInstanceOf(YouTubeAdapter)
@@ -120,7 +120,7 @@ describe('createYouTubeAdapter failure paths', () => {
   it('reports a player error after it became ready as an error event', async () => {
     vi.useFakeTimers()
     const { destroy, loadApi, events } = setup()
-    const p = createYouTubeAdapter(el, 'x', true, { loadApi })
+    const p = createYouTubeAdapter(el, 'x', { loadApi })
     await vi.advanceTimersByTimeAsync(0)
     events().onReady()
     const adapter = await p
@@ -146,12 +146,35 @@ describe('createYouTubeAdapter player options', () => {
       getPlayerState() { return -1 }
       destroy() {}
     }
-    const p = createYouTubeAdapter({} as HTMLElement, 'abc', true, { loadApi: async () => ({ Player: FakePlayer }) })
+    const p = createYouTubeAdapter({} as HTMLElement, 'abc', { loadApi: async () => ({ Player: FakePlayer }) })
     await new Promise((r) => setTimeout(r, 0))
     opts.events.onReady()
     await p
     expect(opts.width).toBe('100%')
     expect(opts.height).toBe('100%')
+  })
+})
+
+describe('createYouTubeAdapter player vars', () => {
+  it("never turns on YouTube's own controls, keyboard shortcuts or fullscreen button (our bar is the only control set)", async () => {
+    let opts!: YTPlayerOptions
+    class FakePlayer implements YTPlayerLike {
+      constructor(_el: HTMLElement, o: YTPlayerOptions) { opts = o }
+      playVideo() {}
+      pauseVideo() {}
+      seekTo() {}
+      getCurrentTime() { return 0 }
+      getDuration() { return 0 }
+      setPlaybackRate() {}
+      getAvailablePlaybackRates() { return [1] }
+      getPlayerState() { return -1 }
+      destroy() {}
+    }
+    const p = createYouTubeAdapter({} as HTMLElement, 'abc', { loadApi: async () => ({ Player: FakePlayer }) })
+    await new Promise((r) => setTimeout(r, 0))
+    opts.events.onReady()
+    await p
+    expect(opts.playerVars).toMatchObject({ controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0, iv_load_policy: 3 })
   })
 })
 

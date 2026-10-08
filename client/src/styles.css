@@ -203,3 +203,13 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 .menu-item:hover{background:var(--surface-2)}
 .menu-item:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
 @media(max-width:560px){.user-name{display:none}.user-btn{padding:0 6px}}
+
+/* ---- Player controls: auto-hide, and a tap layer above the picture ---- */
+.player .tap{position:absolute;inset:0;z-index:2}
+.player.can-control .tap{cursor:pointer}
+.player.idle,.player.idle .tap{cursor:none}
+.controls{transition:opacity .25s ease}
+.controls.hidden{opacity:0;pointer-events:none}
+/* Keep the bar for keyboard users only: :focus-within would also match a button focused by a mouse click and pin it open. */
+.controls.hidden:has(:focus-visible){opacity:1;pointer-events:auto}
+@media (prefers-reduced-motion: reduce){.controls{transition:none}}

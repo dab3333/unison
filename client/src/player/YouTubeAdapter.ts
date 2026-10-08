@@ -165,7 +165,6 @@ export interface CreateOptions {
 export async function createYouTubeAdapter(
   container: HTMLElement,
   videoId: string,
-  controls: boolean,
   opts: CreateOptions = {},
 ): Promise<YouTubeAdapter> {
   const YT = await (opts.loadApi ?? loadYouTubeApi)()
@@ -184,7 +183,9 @@ export async function createYouTubeAdapter(
       videoId,
       width: '100%',
       height: '100%',
-      playerVars: { controls: controls ? 1 : 0, disablekb: controls ? 0 : 1, playsinline: 1, rel: 0, modestbranding: 1 },
+      // Our own control bar is the only control set (it is sync-aware), so YouTube's controls, keyboard
+      // shortcuts, fullscreen button and annotations are all off.
+      playerVars: { controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3 },
       events: {
         onReady: () => {
           if (settled || !adapter) return

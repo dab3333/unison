@@ -20,7 +20,7 @@ async function tapIfBlocked(p: Page) {
 }
 
 // The server allows only a few open rooms per owner and every test hosts as the same user, so close them afterwards.
-const API = 'http://127.0.0.1:8080'
+const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8080'}`
 test.afterEach(async () => {
   const headers = { authorization: `Bearer ${await hostToken()}` }
   const open = (await (await fetch(`${API}/rooms`, { headers })).json()) as Array<{ id: string }>
@@ -113,5 +113,31 @@ test('mobile layout: player above chat, no horizontal scroll, 44px touch targets
       .filter((b) => b.h < 43.5),
   )
   expect(tooSmall).toEqual([])
+  await hostCtx.close()
+})
+
+test('player controls hide when idle during playback, return on movement, and clicking the picture toggles playback', async ({ browser }, info) => {
+  test.skip(info.project.name !== 'desktop', 'pointer-driven behaviour')
+  const { host, hostCtx } = await startRoom(browser)
+  // The short fixture clip must not end while we wait.
+  await host.evaluate(() => { document.querySelector('video')!.loop = true })
+  const controls = host.locator('.controls')
+  const paused = () => host.evaluate(() => document.querySelector('video')!.paused)
+
+  await host.getByRole('button', { name: 'Play' }).click() // the button keeps focus: that must NOT pin the bar open
+  await host.mouse.move(5, 5)
+  await expect(controls).toHaveClass(/hidden/, { timeout: 6000 })
+  await expect(controls).toHaveCSS('opacity', '0')
+  await expect(controls).toHaveCSS('pointer-events', 'none')
+
+  await host.mouse.move(300, 300)
+  await expect(controls).not.toHaveClass(/hidden/)
+
+  await host.mouse.click(300, 300) // click on the picture pauses...
+  await expect.poll(paused).toBe(true)
+  await host.waitForTimeout(3500)
+  await expect(controls).not.toHaveClass(/hidden/) // ...and the bar stays up while paused
+  await host.mouse.click(300, 300) // ...and resumes
+  await expect.poll(paused).toBe(false)
   await hostCtx.close()
 })

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Source } from '@unison/shared'
+import { createAutoHide, type AutoHide } from '../lib/autoHide'
 import { fmt, formatSize } from '../lib/format'
 import { HtmlVideoAdapter } from '../player/HtmlVideoAdapter'
 import type { Player } from '../player/Player'
@@ -35,8 +36,22 @@ export function PlayerStage(p: Props) {
   const [playing, setPlaying] = useState(false)
   const [scrub, setScrub] = useState<number | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const hideRef = useRef<AutoHide | null>(null)
+  const wasHiddenOnPress = useRef(false)
   const { sync, source, localFile } = p
   const sourceKey = JSON.stringify(source)
+
+  // Controls fade out after a few idle seconds while playing, and stay put while paused.
+  useEffect(() => {
+    const hide = createAutoHide({ delayMs: 3000, onChange: setControlsVisible })
+    hideRef.current = hide
+    return () => {
+      hide.dispose()
+      hideRef.current = null
+    }
+  }, [])
+  useEffect(() => { hideRef.current?.setPinned(!playing) }, [playing])
 
   // Build the right Player for the room's source, and hand it to the SyncClient.
   useEffect(() => {
@@ -67,7 +82,7 @@ export function PlayerStage(p: Props) {
           host.innerHTML = ''
           const el = document.createElement('div')
           host.appendChild(el)
-          attach(await createYouTubeAdapter(el, source.id!, p.canControl))
+          attach(await createYouTubeAdapter(el, source.id!))
         } else if (source.type === 'file') {
           if (!localFile || !video) return
           objectUrl = URL.createObjectURL(localFile)
@@ -107,8 +122,6 @@ export function PlayerStage(p: Props) {
         video.load()
       }
     }
-    // canControl only affects YouTube's native controls at creation time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey, localFile, sync])
 
   useEffect(() => {
@@ -131,10 +144,29 @@ export function PlayerStage(p: Props) {
 
   const isYt = source?.type === 'youtube'
   const needsFile = source?.type === 'file' && !localFile
+  const idle = !controlsVisible && playing
 
   return (
-    <div className="player">
+    <div
+      className={`player${idle ? ' idle' : ''}${p.canControl ? ' can-control' : ''}`}
+      onPointerMove={() => hideRef.current?.activity()}
+      onPointerDown={() => hideRef.current?.activity()}
+    >
       {isYt ? <div className="yt" ref={ytRef} /> : <video ref={videoRef} playsInline preload="auto" tabIndex={-1} />}
+
+      {/* Transparent layer over the picture: keeps YouTube's own hover interface from ever showing, and lets
+          controllers click the video to play/pause (a first tap on touch only reveals the controls). */}
+      {source && (
+        <div
+          className="tap"
+          onPointerDown={() => { wasHiddenOnPress.current = !controlsVisible }}
+          onClick={() => {
+            if (!p.canControl || !active || wasHiddenOnPress.current) return
+            if (playing) active.pause()
+            else active.play()
+          }}
+        />
+      )}
 
       {needsFile && source && (
         <div className="overlay">
@@ -166,7 +198,7 @@ export function PlayerStage(p: Props) {
       )}
 
       {source && active && (
-        <div className="controls">
+        <div className={`controls${controlsVisible ? '' : ' hidden'}`}>
           {p.canControl ? (
             <input
               type="range" min={0} max={dur || 1} step={1} value={scrub ?? time} aria-label="Seek"
