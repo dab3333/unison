@@ -465,3 +465,37 @@ describe('launch metrics (I10b)', () => {
     expect(ctx.metrics.snapshot()).toEqual({ joins: 4, reconnectsReplaced: 1, kicks: 1, bans: 1, rateLimited: 1, reports: 0 })
   })
 })
+
+describe('automatic mute expiry', () => {
+  it('tells everyone when an automatic mute ends, so the member can chat again', () => {
+    const { room, advance, g, h } = loaded()
+    for (let i = 0; i < 8; i++) room.handle(g.conn.id, { type: 'chat', text: `m${i}` })
+    expect(h.conn.last('members')!.members.find((m) => m.id === 'g1')?.muted).toBe(true)
+
+    const membersBefore = g.conn.all('members').length
+    advance(61_000)
+    room.tick()
+    expect(g.conn.all('members').length).toBe(membersBefore + 1)
+    expect(g.conn.last('members')!.members.find((m) => m.id === 'g1')?.muted).toBe(false)
+    expect(h.conn.last('members')!.members.find((m) => m.id === 'g1')?.muted).toBe(false)
+  })
+
+  it('does not rebroadcast the member list on ticks when nothing changed', () => {
+    const { room, advance, g } = loaded()
+    advance(1000); room.tick()
+    advance(1000); room.tick()
+    const count = g.conn.all('members').length
+    advance(1000); room.tick()
+    advance(1000); room.tick()
+    expect(g.conn.all('members').length).toBe(count)
+  })
+
+  it('does not announce anything when a moderator mute stays in place', () => {
+    const { room, advance, h, g } = loaded()
+    room.handle(h.conn.id, { type: 'mod', op: 'mute', target: 'g1' })
+    const count = g.conn.all('members').length
+    advance(120_000); room.tick()
+    expect(g.conn.all('members').length).toBe(count)
+    expect(g.conn.last('members')!.members.find((m) => m.id === 'g1')?.muted).toBe(true)
+  })
+})

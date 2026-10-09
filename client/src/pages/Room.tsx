@@ -235,7 +235,7 @@ function RoomView({ slug }: { slug: string }) {
         </div>
 
         <Chat
-          messages={room.chat}
+          items={room.timeline}
           enabled={chatEnabled}
           muted={room.members.find((m) => m.id === room.me?.id)?.muted ?? false}
           canModerate={canModerateChat(role)}

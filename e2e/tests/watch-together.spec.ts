@@ -72,10 +72,10 @@ test('host and guest stay in sync, and chat works both ways', async ({ browser, 
   await guest.waitForTimeout(1500)
   expect(Math.abs((await videoTime(host)) - (await videoTime(guest)))).toBeLessThan(0.8)
 
-  await host.getByLabel('Message').fill('hello from host')
+  await host.getByLabel('Message', { exact: true }).fill('hello from host')
   await host.keyboard.press('Enter')
   await expect(guest.getByText('hello from host')).toBeVisible()
-  await guest.getByLabel('Message').fill('hi host')
+  await guest.getByLabel('Message', { exact: true }).fill('hi host')
   await guest.keyboard.press('Enter')
   await expect(host.getByText('hi host')).toBeVisible()
 
@@ -175,5 +175,27 @@ test('room layout fits the window: no scrolling video column, member list always
   // themed, thin scrollbars instead of the browser's default ones
   const sb = await host.evaluate(() => getComputedStyle(document.querySelector('.msgs')!).scrollbarWidth)
   expect(sb).toBe('thin')
+  await hostCtx.close()
+})
+
+test('a host removes a message from its ⋯ menu; everyone sees a removal note', async ({ browser, page: guest }) => {
+  const { host, slug, hostCtx } = await startRoom(browser)
+  await joinAsGuest(guest, slug, 'Sam')
+  await expect(host.getByText('Sam joined')).toBeVisible()
+
+  await guest.getByLabel('Message', { exact: true }).fill('buy cheap watches')
+  await guest.keyboard.press('Enter')
+  await expect(host.getByText('buy cheap watches')).toBeVisible()
+  await expect(guest.getByRole('button', { name: /Actions for/ })).toHaveCount(0) // members get no menu
+
+  // No always-visible Delete button; it lives in the menu.
+  await expect(host.getByRole('button', { name: 'Delete' })).toHaveCount(0)
+  await host.getByRole('button', { name: 'Actions for Sam' }).click()
+  await host.getByRole('menuitem', { name: 'Delete' }).click()
+
+  await expect(host.getByText('buy cheap watches')).toHaveCount(0)
+  await expect(guest.getByText('buy cheap watches')).toHaveCount(0)
+  await expect(host.getByText('Message removed by a moderator')).toBeVisible()
+  await expect(guest.getByText('Message removed by a moderator')).toBeVisible()
   await hostCtx.close()
 })

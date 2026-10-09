@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatMessage, ClientMessage, ErrorCode, Member, PublicSettings, Role, RoomState, Source } from '@unison/shared'
+import type { ClientMessage, ErrorCode, Member, PublicSettings, Role, RoomState, Source } from '@unison/shared'
 import { WS_URL } from '../lib/config'
 import { getIdentity } from '../lib/identity'
 import { RoomSocket, type SocketStatus } from '../net/roomSocket'
 import { SyncClient } from '../sync/syncClient'
+import { append, fromHistory, markRemoved, memberEvents, type TimelineItem } from './chatTimeline'
 import { canControlPlayback } from './permissions'
 import { errorText, type SentKind } from './roomErrors'
 
@@ -16,7 +17,8 @@ export interface RoomView {
   state: RoomState | null
   settings: PublicSettings | null
   members: Member[]
-  chat: ChatMessage[]
+  /** Chat messages and room events (joins, leaves, mutes), oldest first. */
+  timeline: TimelineItem[]
   source: Source | null
   blocked: boolean
   mismatch: { expected: number; actual: number } | null
@@ -29,6 +31,8 @@ export interface RoomView {
   dismissToast(): void
 }
 
+const CAP = 200
+
 export function useRoom(slug: string): RoomView {
   const [status, setStatus] = useState<SocketStatus>('connecting')
   const [closeCode, setCloseCode] = useState<number | null>(null)
@@ -37,7 +41,7 @@ export function useRoom(slug: string): RoomView {
   const [state, setState] = useState<RoomState | null>(null)
   const [settings, setSettings] = useState<PublicSettings | null>(null)
   const [members, setMembers] = useState<Member[]>([])
-  const [chat, setChat] = useState<ChatMessage[]>([])
+  const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [source, setSource] = useState<Source | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [mismatch, setMismatch] = useState<{ expected: number; actual: number } | null>(null)
@@ -49,6 +53,8 @@ export function useRoom(slug: string): RoomView {
   // Updated straight from server messages (not on render) so the SyncClient always sees the current role and mode.
   const roleRef = useRef<Role | undefined>(undefined)
   const meIdRef = useRef<string | null>(null)
+  const membersRef = useRef<Member[] | null>(null)
+  const eventSeq = useRef(0)
   const modeRef = useRef<PublicSettings['controlMode'] | undefined>(undefined)
   // Every outgoing message goes through here, so an error reply can be matched to the kind of request that caused it.
   const out = useCallback((m: ClientMessage) => {
@@ -106,20 +112,24 @@ export function useRoom(slug: string): RoomView {
             setMe({ id: m.you, role: m.role })
             setSettings(m.settings)
             setMembers(m.members)
-            setChat(m.chat)
+            membersRef.current = m.members
+            setTimeline(fromHistory(m.chat))
             sync.startClockSync()
             clearInterval(clockTimer)
             clockTimer = setInterval(() => sync.startClockSync(), 60_000)
             break
           case 'chat':
-            setChat((c) => [...c, m.message].slice(-200))
+            setTimeline((t) => append(t, fromHistory([m.message])[0], CAP))
             break
           case 'chatRemoved':
-            setChat((c) => c.filter((x) => x.id !== m.id))
+            setTimeline((t) => markRemoved(t, m.id))
             break
           case 'members': {
             const self = m.members.find((x) => x.id === meIdRef.current)
             if (self) roleRef.current = self.role
+            const events = memberEvents(membersRef.current, m.members, meIdRef.current ?? undefined, Date.now(), () => `ev${++eventSeq.current}`)
+            membersRef.current = m.members
+            if (events.length) setTimeline((t) => events.reduce((acc, e) => append(acc, e, CAP), t))
             setMembers(m.members)
             setMe((prev) => {
               const mine = prev && m.members.find((x) => x.id === prev.id)
@@ -153,7 +163,7 @@ export function useRoom(slug: string): RoomView {
   const dismissToast = useCallback(() => setToast(null), [])
 
   return {
-    status, closeCode, joinError, me, state, settings, members, chat, source, blocked, mismatch, toast, sync,
+    status, closeCode, joinError, me, state, settings, members, timeline, source, blocked, mismatch, toast, sync,
     send: out, reconnect, clearBlocked, dismissToast,
   }
 }

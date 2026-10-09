@@ -103,10 +103,10 @@ footer{padding:28px 0;color:var(--muted);font-size:14px;border-top:1px solid var
 .bar i{display:block;height:100%;width:32%;background:var(--violet)}
 .ctl-row{display:flex;justify-content:space-between;font-size:12px;color:#ddd}
 .chat{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface)}
-.msgs{flex:1;overflow-y:auto;padding:12px var(--gutter);display:flex;flex-direction:column;gap:10px}
-.msg b{font-size:13px;margin-right:6px}.msg .sys{color:var(--muted);font-size:13px;font-style:italic}
+.msgs-wrap{position:relative;flex:1;min-height:0;display:flex}
+.msgs{flex:1;min-width:0;overflow-y:auto;padding:12px 0;display:flex;flex-direction:column}
 .composer{display:flex;gap:8px;padding:10px var(--gutter);padding-bottom:max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}
-.composer input{flex:1}
+.composer input{flex:1;width:100%}
 .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--surface-2);border-radius:20px 20px 0 0;border:1px solid var(--line);
   padding:16px var(--gutter);padding-bottom:max(16px,env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s;max-height:70dvh;overflow:auto;z-index:10}
 .sheet.open{transform:none}
@@ -143,7 +143,6 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .file-btn{position:relative;overflow:hidden}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;min-height:0}
-.msg-del{margin-left:6px;min-height:44px;padding:0 12px}
 .room{position:relative;overflow:clip} /* clips the off-screen slide-over chat so focus can't scroll the page sideways */
 .show-landscape{display:none}
 /* Phones in landscape and fullscreen: chat becomes a slide-over so the video keeps the screen. */
@@ -222,3 +221,28 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 /* ---- Themed scrollbars (thin, violet tint) and a dark scheme for native controls ---- */
 :root{color-scheme:dark}
 *{scrollbar-width:thin;scrollbar-color:rgba(124,108,255,.4) transparent}
+
+/* chat rows: clean, grouped by sender */
+.chat-empty{margin:auto;padding:0 var(--gutter);color:var(--muted);font-size:14px;text-align:center}
+.row{padding:1px var(--gutter);font-size:15px;line-height:1.45;overflow-wrap:anywhere}
+.row.first{margin-top:10px}.row.first:first-child{margin-top:0}
+.row:hover{background:var(--surface-2)}
+.row-head{display:flex;align-items:baseline;gap:8px;padding-top:2px}
+.row-head b{font-size:13px}.row-head time{font-size:12px;color:var(--muted)}
+.row-body{display:flex;align-items:flex-start;gap:4px}
+.row-text{flex:1;min-width:0}
+.removed-note{flex:1;color:var(--muted);font-size:13px;font-style:italic}
+.chat-event{padding:6px var(--gutter);color:var(--muted);font-size:13px;text-align:center}
+.msg-menu-wrap{position:relative;flex:none}
+.msg-more{width:44px;height:44px;margin:-10px -8px -10px 0;display:grid;place-items:center;border:0;border-radius:10px;background:none;color:var(--muted);cursor:pointer;opacity:0}
+.msg-more svg{width:20px;height:20px;fill:currentColor}
+.row:hover .msg-more,.msg-more:focus-visible,.msg-more[aria-expanded=true]{opacity:1}
+@media(hover:none){.msg-more{opacity:.7}}
+.msg-more:hover{color:var(--text)}
+.msg-more:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.msg-menu{position:absolute;right:0;top:calc(100% - 6px);min-width:160px;display:grid;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;z-index:6}
+.menu-item.danger{color:var(--danger)}
+.jump{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--text);font:600 13px var(--font-body);cursor:pointer}
+.chat-banner{padding:8px var(--gutter);border-top:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-size:13px}
+.composer-field{position:relative;flex:1;display:flex}
+.composer-field .count{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}

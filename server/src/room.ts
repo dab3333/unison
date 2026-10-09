@@ -81,6 +81,7 @@ export class Room {
   /** Identities that already gave the right password in this room (skip scrypt on rejoin). */
   private verified = new Set<string>()
   private autoPausedAt: number | null = null
+  private lastMutedKey = ''
   /** When the server itself last paused or resumed playback (buffering auto-pause/resume or timeout). */
   private serverChangedAt: number | null = null
   private lastHeartbeat: number
@@ -222,6 +223,8 @@ export class Room {
       if (p.strikes.every((s) => t - s >= STRIKE_WINDOW_MS)) this.penalties.delete(id)
     }
     this.pwFailures.prune()
+    // An automatic mute ends by the clock, not by a message: tell everyone so the member's chat input unlocks.
+    if (this.mutedKey() !== this.lastMutedKey) this.broadcastMembers()
     if (t - this.lastHeartbeat >= HEARTBEAT_MS) {
       this.lastHeartbeat = t
       this.broadcast({ type: 'heartbeat', state: this.engine.state, serverTime: t })
@@ -374,6 +377,11 @@ export class Room {
     this.broadcast({ type: 'state', state: this.engine.state, ...(holdingUp ? { holdingUp } : {}) })
   }
   private broadcastMembers(): void {
+    this.lastMutedKey = this.mutedKey()
     this.broadcast({ type: 'members', members: this.members() })
+  }
+  /** Which members are muted right now, as a comparable string. */
+  private mutedKey(): string {
+    return this.members().filter((m) => m.muted).map((m) => m.id).sort().join('|')
   }
 }
