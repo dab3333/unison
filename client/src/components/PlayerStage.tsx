@@ -147,80 +147,82 @@ export function PlayerStage(p: Props) {
   const idle = !controlsVisible && playing
 
   return (
-    <div
-      className={`player${idle ? ' idle' : ''}${p.canControl ? ' can-control' : ''}`}
-      onPointerMove={() => hideRef.current?.activity()}
-      onPointerDown={() => hideRef.current?.activity()}
-    >
-      {isYt ? <div className="yt" ref={ytRef} /> : <video ref={videoRef} playsInline preload="auto" tabIndex={-1} />}
+    <div className="player-wrap">
+      <div
+        className={`player${idle ? ' idle' : ''}${p.canControl ? ' can-control' : ''}`}
+        onPointerMove={() => hideRef.current?.activity()}
+        onPointerDown={() => hideRef.current?.activity()}
+      >
+        {isYt ? <div className="yt" ref={ytRef} /> : <video ref={videoRef} playsInline preload="auto" tabIndex={-1} />}
 
-      {/* Transparent layer over the picture: keeps YouTube's own hover interface from ever showing, and lets
-          controllers click the video to play/pause (a first tap on touch only reveals the controls). */}
-      {source && (
-        <div
-          className="tap"
-          onPointerDown={() => { wasHiddenOnPress.current = !controlsVisible }}
-          onClick={() => {
-            if (!p.canControl || !active || wasHiddenOnPress.current) return
-            if (playing) active.pause()
-            else active.play()
-          }}
-        />
-      )}
+        {/* Transparent layer over the picture: keeps YouTube's own hover interface from ever showing, and lets
+            controllers click the video to play/pause (a first tap on touch only reveals the controls). */}
+        {source && (
+          <div
+            className="tap"
+            onPointerDown={() => { wasHiddenOnPress.current = !controlsVisible }}
+            onClick={() => {
+              if (!p.canControl || !active || wasHiddenOnPress.current) return
+              if (playing) active.pause()
+              else active.play()
+            }}
+          />
+        )}
 
-      {needsFile && source && (
-        <div className="overlay">
-          <div className="stack" style={{ maxWidth: 360 }}>
-            <b>Pick the same file</b>
-            <p className="muted">
-              The host is playing "{source.name}" ({formatSize(source.size)}). Choose that file from your device. Nothing is uploaded.
-            </p>
-            <label className="btn primary file-btn">
-              Choose file
-              <input type="file" accept="video/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) p.onPickFile(f) }} />
-            </label>
+        {needsFile && source && (
+          <div className="overlay">
+            <div className="stack" style={{ maxWidth: 360 }}>
+              <b>Pick the same file</b>
+              <p className="muted">
+                The host is playing "{source.name}" ({formatSize(source.size)}). Choose that file from your device. Nothing is uploaded.
+              </p>
+              <label className="btn primary file-btn">
+                Choose file
+                <input type="file" accept="video/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) p.onPickFile(f) }} />
+              </label>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {loadError && (
-        <div className="overlay">
-          <p className="err" role="alert" style={{ maxWidth: 360 }}>{loadError}</p>
-        </div>
-      )}
+        {loadError && (
+          <div className="overlay">
+            <p className="err" role="alert" style={{ maxWidth: 360 }}>{loadError}</p>
+          </div>
+        )}
 
-      {p.overlay}
+        {p.overlay}
 
-      {p.blocked && !p.overlay && !needsFile && !loadError && (
-        <div className="overlay">
-          <button className="btn primary" onClick={p.onUnblock}>Tap to join playback</button>
-        </div>
-      )}
+        {p.blocked && !p.overlay && !needsFile && !loadError && (
+          <div className="overlay">
+            <button className="btn primary" onClick={p.onUnblock}>Tap to join playback</button>
+          </div>
+        )}
 
-      {source && active && (
-        <div className={`controls${controlsVisible ? '' : ' hidden'}`}>
-          {p.canControl ? (
-            <input
-              type="range" min={0} max={dur || 1} step={1} value={scrub ?? time} aria-label="Seek"
-              onChange={(e) => setScrub(Number(e.target.value))}
-              onPointerUp={commitScrub} onKeyUp={commitScrub} onTouchEnd={commitScrub}
-            />
-          ) : (
-            <div className="bar"><i style={{ width: dur ? `${Math.min(100, (time / dur) * 100)}%` : '0%' }} /></div>
-          )}
-          <div className="ctl-row">
-            {p.canControl && (
-              <button className="ctl-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => (playing ? active.pause() : active.play())}>
-                <Icon d={playing ? PAUSE : PLAY} />
-              </button>
+        {source && active && (
+          <div className={`controls${controlsVisible ? '' : ' hidden'}`}>
+            {p.canControl ? (
+              <input
+                type="range" min={0} max={dur || 1} step={1} value={scrub ?? time} aria-label="Seek"
+                onChange={(e) => setScrub(Number(e.target.value))}
+                onPointerUp={commitScrub} onKeyUp={commitScrub} onTouchEnd={commitScrub}
+              />
+            ) : (
+              <div className="bar"><i style={{ width: dur ? `${Math.min(100, (time / dur) * 100)}%` : '0%' }} /></div>
             )}
-            <span>{fmt(time)} / {fmt(dur)}</span>
-            <span style={{ flex: 1 }} />
-            {p.extraControls}
-            <button className="ctl-btn" aria-label="Fullscreen" onClick={p.onFullscreen}><Icon d={FULL} /></button>
+            <div className="ctl-row">
+              {p.canControl && (
+                <button className="ctl-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => (playing ? active.pause() : active.play())}>
+                  <Icon d={playing ? PAUSE : PLAY} />
+                </button>
+              )}
+              <span>{fmt(time)} / {fmt(dur)}</span>
+              <span style={{ flex: 1 }} />
+              {p.extraControls}
+              <button className="ctl-btn" aria-label="Fullscreen" onClick={p.onFullscreen}><Icon d={FULL} /></button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

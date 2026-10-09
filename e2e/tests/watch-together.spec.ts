@@ -141,3 +141,39 @@ test('player controls hide when idle during playback, return on movement, and cl
   await expect.poll(paused).toBe(false)
   await hostCtx.close()
 })
+
+test('room layout fits the window: no scrolling video column, member list always visible, player stays 16:9', async ({ browser }, info) => {
+  test.skip(info.project.name !== 'desktop', 'desktop layout')
+  const { host, hostCtx } = await startRoom(browser)
+  for (const size of [
+    { width: 1914, height: 883 }, // wide and short: the 16:9 player alone is taller than the column
+    { width: 1600, height: 700 },
+    { width: 1280, height: 720 },
+    { width: 1100, height: 600 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await host.setViewportSize(size)
+    await host.waitForTimeout(150)
+    const r = await host.evaluate(() => {
+      const col = document.querySelector('.video-col') as HTMLElement
+      const sheet = document.querySelector('.sheet')!.getBoundingClientRect()
+      const player = document.querySelector('.player')!.getBoundingClientRect()
+      return {
+        colScrolls: col.scrollHeight > col.clientHeight + 1,
+        sheetTop: sheet.top, sheetBottom: sheet.bottom, vh: window.innerHeight,
+        ratio: player.width / player.height, playerW: player.width, colW: col.clientWidth,
+      }
+    })
+    const at = JSON.stringify(size)
+    expect(r.colScrolls, `video column scrolls at ${at}`).toBe(false)
+    expect(r.sheetTop, `member list top at ${at}`).toBeGreaterThanOrEqual(0)
+    expect(r.sheetBottom, `member list bottom at ${at}`).toBeLessThanOrEqual(r.vh + 1)
+    expect(Math.abs(r.ratio - 16 / 9), `player ratio at ${at}`).toBeLessThan(0.02)
+    expect(r.playerW, `player width at ${at}`).toBeLessThanOrEqual(r.colW + 1)
+  }
+  await expect(host.getByText('In this room')).toBeInViewport()
+  // themed, thin scrollbars instead of the browser's default ones
+  const sb = await host.evaluate(() => getComputedStyle(document.querySelector('.msgs')!).scrollbarWidth)
+  expect(sb).toBe('thin')
+  await hostCtx.close()
+})
