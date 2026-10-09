@@ -19,6 +19,7 @@ const MAX_LEN = 500
 export function Chat({ items, enabled, muted = false, canModerate, open, onSend, onDelete }: Props) {
   const [text, setText] = useState('')
   const [menuId, setMenuId] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ right: number; top?: number; bottom?: number }>({ right: 0 })
   const [away, setAway] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -35,9 +36,19 @@ export function Chat({ items, enabled, muted = false, canModerate, open, onSend,
     else setAway(true)
   }, [lastId])
 
+  // The list scrolls and clips, so the menu is fixed to the viewport, right-aligned to its button, and flips up near the bottom.
+  function openMenu(id: string, btn: HTMLElement) {
+    if (menuId === id) return setMenuId(null)
+    const r = btn.getBoundingClientRect()
+    const right = window.innerWidth - r.right
+    setMenuPos(r.bottom + 70 > window.innerHeight ? { right, bottom: window.innerHeight - r.top + 4 } : { right, top: r.bottom + 4 })
+    setMenuId(id)
+  }
+
   function onScroll() {
     const el = listRef.current
     if (!el) return
+    setMenuId(null)
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
     stickRef.current = atBottom
     if (atBottom) setAway(false)
@@ -105,14 +116,14 @@ export function Chat({ items, enabled, muted = false, canModerate, open, onSend,
                       <button
                         className="msg-more" aria-label={`Actions for ${item.nickname}`}
                         aria-haspopup="menu" aria-expanded={menuId === item.id}
-                        onClick={() => setMenuId(menuId === item.id ? null : item.id)}
+                        onClick={(e) => openMenu(item.id, e.currentTarget)}
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
                         </svg>
                       </button>
                       {menuId === item.id && (
-                        <div className="msg-menu" role="menu">
+                        <div className="msg-menu" role="menu" style={menuPos}>
                           <button
                             className="menu-item danger" role="menuitem" autoFocus
                             onClick={() => { setMenuId(null); onDelete(item.id) }}

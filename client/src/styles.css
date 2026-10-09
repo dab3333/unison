@@ -240,7 +240,7 @@ input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--violet
 @media(hover:none){.msg-more{opacity:.7}}
 .msg-more:hover{color:var(--text)}
 .msg-more:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
-.msg-menu{position:absolute;right:0;top:calc(100% - 6px);min-width:160px;display:grid;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;z-index:6}
+.msg-menu{position:fixed;min-width:160px;display:grid;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;z-index:6}
 .menu-item.danger{color:var(--danger)}
 .jump{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--text);font:600 13px var(--font-body);cursor:pointer}
 .chat-banner{padding:8px var(--gutter);border-top:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-size:13px}
